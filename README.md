@@ -38,6 +38,7 @@ first — it checks every prerequisite and says what to do about each one.
 | `npm test` | Lint, then every service suite. |
 | `npm run package` | Build, then sign `release/tizenhomebrew.wgt`. Needs certificates. |
 | `npm run bootstrap -- <tv-ip>` | First install onto a TV, over sdb. Needed once. |
+| `npm run duid -- <tv-ip>` | The TV's DUID, which is what a certificate is bound to. |
 | `npm run push -- <tv-ip> <pin>` | Install over the LAN, through Tizen Homebrew itself. |
 | `npm run dev` | Both screens in a browser, live, with no hardware. |
 | `npm run dev:service` | Run the service off-TV on `:8091`. |
@@ -189,7 +190,7 @@ Set these once, in **Settings → Secrets and variables → Actions**:
 | Secret | `TIZEN_AUTHOR_P12` | base64 of `author.p12` — `base64 -i author.p12 \| pbcopy` |
 | Secret | `TIZEN_AUTHOR_PW` | its password |
 | Secret | `TIZEN_DISTRIBUTOR_P12` | base64 of `distributor.p12` |
-| Secret | `TIZEN_DISTRIBUTOR_PW` | its password, if it differs from the author's |
+| Secret | `TIZEN_DISTRIBUTOR_PW` | **usually not needed** — only if the distributor password differs from the author's, which it does not when `create-samsung-cert` wrote the pair |
 | Variable | `HOMEBREW_CATALOG_URL` | optional — overrides the catalogue origin baked in from `tizen.config.json` |
 
 Tag and version have to agree: the workflow refuses a release tagged `v1.2.0`
@@ -202,8 +203,23 @@ widget and leaves it as an artifact rather than attaching it to anything.
 ### Certificates
 
 Signing needs **two** certificates, and the second is not optional: a Samsung TV
-rejects the stock Tizen distributor certificate at install time. Mint a pair
-bound to your TV, using the DUID from `sdb shell 0 getduid`:
+rejects the stock Tizen distributor certificate at install time. A pair is
+bound to one television, identified by its DUID:
+
+```sh
+npm run duid -- 192.168.2.9
+```
+
+That asks the TV over sdb, which is the value `create-samsung-cert` wants. It
+only answers while the TV's developer host IP still points at this machine —
+once it is pinned to `127.0.0.1` the same question has to go through Tizen
+Homebrew's own relay, from the phone UI's Shell tab. The device API on port
+8001 also reports a `duid` to anyone who asks, and the command prints that too,
+but labelled: the two are not known to be the same string on every model, and a
+certificate minted against the wrong one fails at install with `Check
+certificate error` and no hint as to why.
+
+Then mint the pair:
 
 ```sh
 npx tizenjs create-samsung-cert --privilege Public \

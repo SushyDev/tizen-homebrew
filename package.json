@@ -22,6 +22,7 @@
     "test": "node tools/test.js",
     "package": "node tools/package.js",
     "bootstrap": "node tools/bootstrap.js",
+    "duid": "node tools/duid.js",
     "push": "node tools/push.js",
     "dev": "npm run dev --workspace ui",
     "dev:service": "node service/src/main.js",
