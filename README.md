@@ -49,11 +49,11 @@ and writes the result:
 npm run mint -- --duid <the-DUID>
 ```
 
-It mints at **partner** level, because `config.xml` declares
-`http://developer.samsung.com/privilege/productinfo` and a public certificate
-cannot carry that privilege. A television refuses such a package with
-`Security error : Invalid function parameter was given:<2>`, which mentions
-neither privileges nor certificates.
+The certificate is yours: minted against your own Samsung account, at public
+level, which anybody can issue for themselves. Nothing here is shared, and no
+certificate belonging to another project is involved. `config.xml` declares
+only public-level privileges precisely so that stays true — see the note in it
+for what was dropped and why.
 
 That writes `author.p12`, `distributor.p12` and the password into
 `~/.tizen-certs`, which is where everything here looks by default.
