@@ -62,6 +62,48 @@ const quietly = (options) => {
         bounded[bounded.length - 1].text);
 }
 
+// One record is one line, which is the promise the whole log is built on and
+// the one a stack trace used to break. The television counts log rows to find
+// how many fit on screen; a record eight lines tall made that count oscillate
+// and recursed the page until the stack ran out — pressing `show logs` killed
+// the app. See `fit` in ui/src/tv.js.
+{
+    const recorder = quietly({});
+
+    recorder.log.err(Facility.SVC, 'uncaught exception: TypeError: app.onRequest is not a function\n' +
+        '    at MessagePort.<anonymous> (/usr/share/wrt/app/service/service_runner.js:152:59)\n' +
+        '    at MessagePort.emit (events.js:310:20)');
+
+    const lines = recorder.since(0);
+
+    check('a stack trace becomes one record per line', lines.length === 3,
+        `kept ${lines.length}`);
+
+    check('and no record has a newline left in it',
+        lines.every((line) => line.text.indexOf('\n') === -1),
+        JSON.stringify(lines.map((line) => line.text)));
+
+    check('each line keeps the severity and facility of the message it came from',
+        lines.every((line) => line.level === 'err' && line.facility === Facility.SVC),
+        JSON.stringify(lines.map((line) => [line.facility, line.level])));
+
+    check('a poller can still resume from any of them',
+        recorder.since(lines[0].seq).length === 2, 'since(first) did not return the rest');
+
+    check('and every one of them is printed', recorder.printed.length === 3,
+        `printed ${recorder.printed.length}`);
+}
+
+// A message that simply ends in a newline is one line, not two: the newline is
+// punctuation on the message rather than an empty line somebody wrote.
+{
+    const recorder = quietly({});
+    recorder.log.info(Facility.SVC, 'coreinstall spend time = 1234 ms\n');
+
+    check('a trailing newline does not add an empty record', recorder.since(0).length === 1,
+        JSON.stringify(recorder.since(0).map((line) => line.text)));
+}
+
 // Debug is the level the TV page's own polling logs at: on by request only,
 // because recording it means every poll produces a line the next poll
 // delivers — a log that grows because it is being read.

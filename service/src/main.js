@@ -490,6 +490,27 @@ const start = () => {
 // refuses to ship a bundle without it.
 module.exports.onStart = start;
 module.exports.start = start;
+
+// `onRequest` is the other half of that same contract, and leaving it out was
+// not free. Tizen's service runner calls it for every app control request
+// delivered to a service that is *already* running — which is what the TV
+// page's launchAppControl does every time somebody opens the app, on the
+// second launch and every one after it. With nothing there to call, the runner
+// threw
+//
+//     TypeError: app.onRequest is not a function
+//         at MessagePort.<anonymous> (/usr/share/wrt/app/service/service_runner.js:152)
+//
+// into this process on every one of those launches. The service survived it —
+// the process-wide handler in obs/log.js catches it — but it wrote a stack
+// trace into the log each time, which is where it was eventually found:
+// somebody had opened the app to read the log.
+//
+// There is nothing to do with the request. The service is already listening,
+// and it carries nothing this one needs; saying so is the whole job. It is
+// logged at debug because the page writes its own line for the launch, and two
+// records for one event is how a log stops being read.
+module.exports.onRequest = () => log.on(Facility.SVC).debug('a launch reached a service that is already running');
 module.exports.BUILD = BUILD;
 module.exports.PORT = PORT;
 

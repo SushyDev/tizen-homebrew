@@ -28,6 +28,13 @@ const realPackage = fixture.wgt();
     const entry = require('../src/main.js');
     check('the service exports onStart, which Tizen calls',
         typeof entry.onStart === 'function', `exports: ${Object.keys(entry).join(', ')}`);
+
+    // And onRequest, which Tizen calls for an app control request delivered to
+    // a service that is already running — every launch of the app after the
+    // first. Without it the runner threw `app.onRequest is not a function`
+    // into the service on each one, and the stack trace landed in the log.
+    check('and onRequest, which it calls on every launch after the first',
+        typeof entry.onRequest === 'function', `exports: ${Object.keys(entry).join(', ')}`);
 }
 
 // --- doubles -------------------------------------------------------------

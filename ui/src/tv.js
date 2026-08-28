@@ -295,10 +295,34 @@ mount(store, { masthead, connect, status, log, overlay, deck });
  * the value goes into the store and the paint follows from there like
  * everything else.
  *
- * It settles immediately: the count changes what is drawn, the redraw is
- * measured again, and the second answer agrees with the first because there
- * are always spare rows below the fold to be cut off.
+ * With rows of one height it settles on the second pass: the count changes
+ * what is drawn, the redraw is measured again, and the second answer agrees
+ * with the first because there are always spare rows below the fold to be cut
+ * off. It is not allowed to *depend* on that, and `offered` below is why.
  */
+
+// Every count this settle has already asked for, and whether the repaint now
+// being measured is one this measurement caused.
+//
+// Measuring the pane and then redrawing it changes what there is to measure,
+// so this is a fixed-point iteration — and a fixed point is not guaranteed.
+// Rows are only the same height while every line is one line long: a service
+// record carrying a stack trace was eight, and the sequence became a cycle
+// rather than converging. Nine rows fitted when six were drawn, six fitted
+// when nine were, and neither answer was wrong.
+//
+// Each pass is a synchronous repaint through the store, so a cycle is not a
+// flicker — it is this page recursing until the stack ends. On a television
+// that killed the app, and pressing `show logs` was how you did it.
+//
+// So a settle is bounded. Every answer is remembered, and the moment one
+// repeats — which is the cycle, announcing itself — the smallest is taken and
+// the pass ends. The smallest is the safe end of a cycle: it is the count that
+// fits whichever rows are on screen, where the largest overflows the pane it
+// was measured against.
+let offered = [];
+let settling = false;
+
 const fit = () => {
     const pane = document.querySelector('.curtain .feed, .curtain .roll');
     if (!pane) return;
@@ -321,7 +345,29 @@ const fit = () => {
         })
         .length;
 
-    if (rows > 0 && rows !== store.get().rows) store.update({ rows });
+    if (rows === 0 || rows === store.get().rows) return;
+
+    const settle = (count) => {
+        offered.push(count);
+        settling = true;
+
+        try {
+            store.update({ rows: count });
+        } finally {
+            settling = false;
+        }
+    };
+
+    if (offered.indexOf(rows) === -1) return settle(rows);
+
+    const smallest = Math.min.apply(null, offered);
+    if (smallest !== store.get().rows) settle(smallest);
+};
+
+/** A settle that starts over, for a pane this measurement did not cause. */
+const remeasure = () => {
+    offered = [];
+    fit();
 };
 
 // The deck is replaced wholesale on every repaint, so the element holding
@@ -329,14 +375,17 @@ const fit = () => {
 // light back on it — by name, which is why it survives the swap.
 store.subscribe(() => {
     keys.restore();
-    fit();
+
+    // A change from anywhere else — a log line, an overlay opening — is a new
+    // pane, and the counts offered against the last one say nothing about it.
+    if (settling) fit(); else remeasure();
 });
 
 keys.focus('theme');
 
 // Off a television the window is resizable, which is the only thing that
 // changes how much fits without the state changing first.
-window.addEventListener('resize', fit);
+window.addEventListener('resize', remeasure);
 
 // ── Reading the service's log ─────────────────────────────────────────
 
