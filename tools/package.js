@@ -14,6 +14,7 @@ const { join, dirname } = require('path');
 const ui = require('./ui.js');
 const { load, ROOT } = require('./config.js');
 const { which } = require('./which.js');
+const certificates = require('./certificates.js');
 
 // What actually goes into each .wgt, named explicitly.
 //
@@ -48,18 +49,17 @@ function checkPrerequisites() {
         );
     }
 
-    const p12 = process.env.TIZEN_AUTHOR_P12;
-    const password = process.env.TIZEN_AUTHOR_PW;
+    const found = certificates.locate();
+    const absent = certificates.missing(found);
 
-    if (!p12 || !password) {
+    if (absent.length) {
         throw friendly(
-            'A signing certificate is required to package.\n\n' +
-            '  export TIZEN_AUTHOR_P12=/path/to/author.p12\n' +
-            '  export TIZEN_AUTHOR_PW=your-certificate-password\n\n' +
-            '  A certificate comes from Tizen Studio, or from Tizen Homebrew itself once\n' +
-            '  it has signed in with a Samsung account (see homebrew/README.md).'
+            `Cannot sign:\n  ${absent.join('\n  ')}\n\n  ${certificates.howToMint()}`
         );
     }
+
+    const p12 = found.author;
+    const password = found.password;
 
     if (!existsSync(p12)) {
         throw friendly(`TIZEN_AUTHOR_P12 points at a file that does not exist:\n  ${p12}`);
@@ -78,10 +78,9 @@ function checkPrerequisites() {
     // which says nothing about which of the two signatures is at fault.
     // Samsung mints both halves together, bound to the TV's DUID, so the
     // distributor p12 normally sits beside the author one.
-    const distributor = process.env.TIZEN_DISTRIBUTOR_P12 || join(dirname(p12), 'distributor.p12');
+    const distributor = found.distributor;
 
-    // create-samsung-cert writes both halves under the one password.
-    const distributorPassword = process.env.TIZEN_DISTRIBUTOR_PW || password;
+    const distributorPassword = found.distributorPassword;
 
     if (!existsSync(distributor)) {
         throw friendly(

@@ -8,6 +8,7 @@ const { join, dirname } = require('path');
 
 const ui = require('./ui.js');
 const { load, CONFIG_PATH, ROOT } = require('./config.js');
+const certificates = require('./certificates.js');
 
 const checks = [];
 
@@ -63,20 +64,24 @@ check('tizenjs (packaging only)', () => {
 });
 
 check('signing certificate (packaging only)', () => {
-    const p12 = process.env.TIZEN_AUTHOR_P12;
-    if (!p12) {
+    const found = certificates.locate();
+    const absent = certificates.missing(found);
+
+    if (absent.length === 3) {
         return {
             skip: true,
-            detail: 'TIZEN_AUTHOR_P12 not set — needed only for `npm run package`.'
+            detail: `none in ${found.directory} — needed only for \`npm run package\`.`
         };
     }
-    if (!existsSync(p12)) throw new Error(`TIZEN_AUTHOR_P12 points at a missing file: ${p12}`);
-    if (!process.env.TIZEN_AUTHOR_PW) throw new Error('TIZEN_AUTHOR_P12 is set but TIZEN_AUTHOR_PW is not.');
+
+    if (absent.length) throw new Error(absent.join('; '));
+
+    const p12 = found.author;
 
     // Both halves have to be Samsung's. Without a distributor certificate
     // tizenjs signs with the stock Tizen one, which expired in 2022 and which
     // the TV refuses — the package builds and only fails on the TV.
-    const distributor = process.env.TIZEN_DISTRIBUTOR_P12 || join(dirname(p12), 'distributor.p12');
+    const distributor = found.distributor;
     if (!existsSync(distributor)) {
         throw new Error(
             `No distributor certificate at ${distributor}.\n` +
