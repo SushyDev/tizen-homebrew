@@ -73,7 +73,7 @@ const boot = () => {
     log.ok('svc', 'startup finished in 312ms');
     log.info('dev', 'tizen 6.5');
     log.ok('sdb', 'loopback 127.0.0.1:26101 answered — this TV can install its own apps');
-    log.info('cat', '3 apps from the cache, 41m old');
+    log.info('cat', '4 apps from the cache, 41m old');
 };
 
 // ── The device, and what it has to offer ─────────────────────────────────
@@ -110,11 +110,25 @@ const artwork = (letter, top, bottom) => `data:image/svg+xml;base64,${Buffer.fro
 
 const CATALOG = [
     {
+        // The channel itself, which is in its own catalogue so a television
+        // can carry its own next version to itself. No version declared, for
+        // the same reason the real entry declares none: the release is what
+        // moves, and it is asked about rather than written down.
+        id: 'homebrew',
+        name: 'Tizen Homebrew',
+        version: null,
+        description: 'This app. Updates itself.',
+        packageId: 'GJBBYNLkgP',
+        icon: artwork('H', '#7fe3ff', '#0a5f80'),
+        source: { type: 'github', ref: 'SushyDev/tizen-homebrew' }
+    },
+    {
         id: 'tube',
         name: 'YouTube',
         version: '0.1.0',
         description: 'YouTube without the advertisements',
         icon: artwork('Y', '#ff4d4d', '#9b0000'),
+        packageId: 'tUb3Xq7Lm9',
         source: { type: 'github', ref: 'SushyDev/tube' }
     },
     {
@@ -137,6 +151,18 @@ const CATALOG = [
         source: { type: 'url', ref: 'https://example.invalid/Kodi.wgt' }
     }
 ];
+
+// The same list a moment later.
+//
+// The real service answers `getCatalog` twice: the rows, and then the rows
+// again with what this television is holding marked on them — see
+// install/updates.js, which asks the platform what is installed and GitHub
+// what has been released. One row comes back with an update on it, because
+// the lit "update" button is a state the app list exists to be able to show
+// and there is otherwise no way to look at it without a stale TV to hand.
+const UPDATED = CATALOG.map((app) => (app.id === 'homebrew'
+    ? { ...app, version: '0.2.0', installed: '0.1.0', update: true }
+    : app));
 
 // What the service reads out of a package sitting on the television's own
 // disk — see install/preview.js. The filenames below are what a browser would
@@ -284,26 +310,28 @@ const conversation = (socket, say) => {
                 log.info('pkg', 'release v0.1.4 carries tube.wgt (2.41 MB)');
                 log.ok('pkg', 'got tube.wgt: 2.41 MB in 1.60s (1.51 MB/s)');
                 log.info('pkg', 'sha256 3f2a91c0d84b17e6…');
+                // The manifest is read the moment the bytes are in hand, which
+                // is what the next phase has an identity to send.
+                log.info('pkg', 'identified Tube 0.1.0 (tUb3Xq7Lm9, app tUb3Xq7Lm9.Tube, wgt)');
             },
             resigning: () => log.info('pkg', 'tizen 7 or newer — re-signing against this TV\'s own certificates'),
-            staging: () => {
-                log.info('pkg', 'identified Tube 0.1.0 (tUb3Xq7Lm9, app tUb3Xq7Lm9.Tube, wgt)');
-                log.ok('pkg', 'staged 2.41 MB to /home/owner/share/tmp/sdk_tools/package.wgt');
-            },
+            staging: () => log.ok('pkg', 'staged 2.41 MB to /home/owner/share/tmp/sdk_tools/package.wgt'),
             installing: () => log.info('sdb', 'shell:0 vd_appinstall tUb3Xq7Lm9 /home/owner/share/tmp/sdk_tools/package.wgt')
         };
 
         // What the package turned out to be. The real pipeline learns this the
-        // moment the bytes are in hand and sends it with the staging phase —
-        // see install/pipeline.js — and the card that renders it is one of the
-        // screens this stand-in exists to make visible.
+        // moment the bytes are in hand and sends it with the re-signing phase
+        // — see install/pipeline.js — and the card that renders it is one of
+        // the screens this stand-in exists to make visible.
         const identity = PACKAGES[ref] || (() => {
-            const entry = CATALOG.filter((app) => app.id === ref)[0];
+            // UPDATED rather than CATALOG: same rows, and the versions are the
+            // ones the phone is showing by the time anything can be pressed.
+            const entry = UPDATED.filter((app) => app.id === ref)[0];
 
             return entry
                 ? {
-                    packageId: `${entry.id}Xq7Lm9`,
-                    appId: `${entry.id}Xq7Lm9.${entry.name}`,
+                    packageId: entry.packageId || `${entry.id}Xq7Lm9`,
+                    appId: `${entry.packageId || `${entry.id}Xq7Lm9`}.${entry.name.replace(/\s/g, '')}`,
                     name: entry.name,
                     version: entry.version,
                     isWgt: true,
@@ -314,7 +342,18 @@ const conversation = (socket, say) => {
         })();
 
         for (const [phase, detail, wait] of PHASES) {
-            send('progress', { phase, detail, identity: phase === 'staging' ? identity : null });
+            // What the package turned out to be goes with the re-signing
+            // phase, the first one after the download — see the real
+            // pipeline, which names the application in that phase's detail
+            // rather than repeating the reference somebody typed.
+            const announcing = phase === 'resigning';
+
+            send('progress', {
+                phase,
+                detail: announcing ? identity.name : detail,
+                identity: announcing ? identity : null
+            });
+
             if (narrate[phase]) narrate[phase]();
             await new Promise((resolve) => setTimeout(resolve, wait));
         }
@@ -336,7 +375,7 @@ const conversation = (socket, say) => {
             return fail(refused.code, refused.line, refused.remedy);
         }
 
-        const entry = CATALOG.filter((app) => app.id === ref)[0];
+        const entry = UPDATED.filter((app) => app.id === ref)[0];
 
         log.info('sdb', 'spend time for wgt injection: 4.19 sec');
         log.ok('sdb', 'vd_appinstall finished in 4.21s');
@@ -345,7 +384,7 @@ const conversation = (socket, say) => {
 
         send('done', {
             name: entry ? entry.name : String(ref).split('/').pop(),
-            packageId: entry ? `${entry.id}Xq7Lm9` : 'pKg4Tz1Wv8',
+            packageId: entry ? entry.packageId || `${entry.id}Xq7Lm9` : 'pKg4Tz1Wv8',
             version: entry ? entry.version : '1.0.0',
             source
         });
@@ -389,7 +428,18 @@ const conversation = (socket, say) => {
         },
 
         getState: () => send('state', DEVICE),
-        getCatalog: () => send('catalog', { entries: CATALOG, stale: false }),
+        getCatalog: async () => {
+            send('catalog', { entries: CATALOG, stale: false });
+
+            // Delayed for the same reason the real one is: it is waiting on
+            // GitHub, which is why it is a second message rather than a slower
+            // first one.
+            await new Promise((resolve) => setTimeout(resolve, 900));
+            log.info('cat', 'SushyDev/tizen-homebrew has released 0.2.0');
+            log.ok('cat', 'Tizen Homebrew 0.1.0 is installed and 0.2.0 is out');
+
+            send('catalog', { entries: UPDATED, stale: false });
+        },
         listDir: ({ path }) => send('dir', DIRECTORY[path] || DIRECTORY['/media']),
         install,
 

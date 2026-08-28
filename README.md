@@ -72,8 +72,13 @@ work on it. Done.
 
 The PIN changes every time the app is opened; the TV screen shows the current
 one. Your phone keeps the last one that worked, so reloading the page does not
-ask for it again — until the TV restarts and mints a new one. Update Tizen
-Homebrew itself over the LAN:
+ask for it again — until the TV restarts and mints a new one.
+
+**Tizen Homebrew updates itself.** It is in its own catalogue, so when a newer
+release exists its row in **Apps** says *update* instead of *install*, with the
+version it would replace underneath. Pressing it is an ordinary install of an
+ordinary package that happens to be this one. From a working copy, over the
+LAN, there is still:
 
 ```sh
 npm run package && npm run push -- 192.168.2.9 <pin>
@@ -87,7 +92,8 @@ npm run package && npm run push -- 192.168.2.9 <pin>
 | --- | --- |
 | `npm run full-bootstrap -- <ip>` | Certificate, build, install — the whole setup |
 | `npm run mint -- <ip> [pin]` | Certificate only; adds this TV to the pair you have |
-| `npm run package` | Build and sign a `.wgt` |
+| `npm run package` | Build and sign a `.wgt` for this machine's TV |
+| `npm run package -- --unsigned` | The same, signed by nobody — what a release carries |
 | `npm run bootstrap -- <ip>` | Install over sdb (needs Host PC IP pointed here) |
 | `npm run push -- <ip> <pin>` | Install over the LAN, once the app is running |
 | `npm run certs -- <ip> <pin>` | Give the TV its certificates (`--forget` removes) |
@@ -152,10 +158,18 @@ Pages. Adding an app is a commit there — no rebuild, nothing to reinstall.
   "id": "tube",
   "name": "YouTube",
   "description": "YouTube without the advertisements",
-  "version": "0.1.0",
+  "packageId": "tUb3Xq7Lm9",
   "source": { "type": "github", "ref": "owner/repo" }
 }
 ```
+
+**Updates.** `packageId` is the id an app installs under, and it is what turns
+an **install** row into an **update** one: the TV holds it against its own list
+of installed packages, and where it finds a match it asks GitHub what that app
+has released since. Newer by semver, and only strictly newer, lights the
+button. Tizen Homebrew is in its own catalogue, so the app list is also how the
+channel updates itself — and it costs one request per app you actually have,
+none for the rest.
 
 A `github` app's logo is `logo.png` in the root of its own repository, guessed
 rather than declared — `icon` overrides it with an https URL. An app with
@@ -192,6 +206,7 @@ real WebSocket. Point it at hardware with `HOMEBREW_TV=192.168.2.9 npm run dev`.
 | `service/src/main.js` | Routes, and what the service is |
 | `service/src/install/pipeline.js` | Install, six named steps |
 | `service/src/install/resign.js` | Re-signing for this television |
+| `service/src/install/updates.js` | What is installed, and what has been released since |
 | `service/src/tv/sdb.js` | Loopback sdb with real timeouts |
 | `service/src/obs/log.js` | The log everything else writes to |
 
@@ -200,13 +215,22 @@ the way it is. Two platform floors are easy to trip and the build enforces
 both: pages against Chromium 63, which drops CSS it cannot parse *silently*,
 and the service bundle against Node 12.
 
-**Releasing.** Publishing a GitHub release builds, signs and attaches the
-widget. Set once under **Settings → Secrets and variables → Actions**:
-`TIZEN_AUTHOR_P12`, `TIZEN_AUTHOR_PW`, `TIZEN_DISTRIBUTOR_P12` as secrets (the
-p12s base64-encoded, plus `TIZEN_DISTRIBUTOR_PW` if it differs), and optionally
-`HOMEBREW_CATALOG_URL` as a variable. Tag and
-version have to agree — `npm run version -- 1.2.0` sets it everywhere. Those
-releases are signed for **your** television and nobody else's.
+**Releasing.** Pushing a tag builds the widget and opens a draft release with
+it attached. Tag and version have to agree, and the workflow checks —
+`npm run version -- 1.2.0` sets it everywhere:
+
+```sh
+npm run version -- 1.2.0     # and commit
+git tag v1.2.0 && git push origin v1.2.0
+```
+
+Publishing the draft is the last step, and the one that offers the update: a
+draft is invisible to `releases/latest`, which is what every TV asks. The
+widget is **unsigned** — a signature names one television, so a signed release
+would install on nobody else's set, and every Tizen Homebrew re-signs what it
+installs anyway. That includes itself, which is why the channel is in its own
+catalogue. No secrets are needed; `HOMEBREW_CATALOG_URL` as a repository
+variable overrides the catalogue origin if you want a different one.
 
 ---
 

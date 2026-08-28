@@ -17,6 +17,7 @@ Each entry:
   "name": "YouTube",
   "description": "YouTube without the advertisements",
   "version": "0.1.0",
+  "packageId": "tUb3Xq7Lm9",
   "icon": "https://example.com/tube.png",
   "source": { "type": "github", "ref": "owner/repo" }
 }
@@ -29,6 +30,35 @@ rather than trusted, so a malformed one costs its own row and nothing else.
 One asset per release, for the `github` kind: the resolver takes the first
 package it finds, so a release carrying two of them installs whichever GitHub
 happens to list first.
+
+## Updates
+
+`packageId` is the id the app installs under — the `package` attribute of
+`<tizen:application>` in its `config.xml`, or `package` in a
+`tizen-manifest.xml`. It is optional, and it is the only thing that lets a row
+say **update** rather than **install**: the television matches it against its
+own list of installed packages, and where it finds one it asks GitHub what the
+app has released since.
+
+The versions are compared as semver, so `0.10.0` is newer than `0.9.9` and
+`1.2.0-rc1` is older than `1.2.0`. The button lights up only when the release
+is strictly newer than what is on the set — a television running a hand-pushed
+build ahead of the release is never offered a way backwards.
+
+That comparison is against the release, not against `version` here, for
+`github` apps: a number written into this file is one somebody has to keep
+true by hand, and the release is the thing that actually moves. `version` is
+what stands for a `url` app, and what stands when GitHub cannot be reached.
+
+Tizen Homebrew is in this list for that reason. It is how the channel reaches
+its own next version — the app list on your phone is also the update button
+for the thing drawing it.
+
+An entry with no `packageId` is never anything but **install**, which is what
+every entry was before this existed. Installing over a version already on the
+set is fine; Tizen treats it as an upgrade, provided the author certificate
+has not changed — and it has not, because the television re-signs everything
+it installs with its own pair.
 
 ## Logos
 

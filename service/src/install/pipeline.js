@@ -104,6 +104,28 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
             return { ...carried, archive, name };
         };
 
+        // Read off the archive exactly as it arrived, before it is re-signed.
+        //
+        // Re-signing replaces the two signature files and touches nothing
+        // else, so this is the same answer a step later — and a step earlier
+        // is where it is worth having, because it is what the phase below
+        // sends. It also means a file that is not a Tizen package at all is
+        // refused before anything spends 150ms signing it, with a message
+        // that names the actual problem rather than a zip that would not open.
+        //
+        // `described` is the same identity with the application's own icon
+        // pulled out of the archive beside it — see install/preview.js. That
+        // is the phone's copy; the bare identity is what the steps below
+        // install under.
+        const readIdentity = (carried) => {
+            const identity = manifest.identify(carried.archive);
+
+            say.info(`identified ${identity.name || 'an unnamed package'} ${identity.version || ''} ` +
+                `(${identity.packageId}${identity.appId ? `, app ${identity.appId}` : ''}, ${identity.isWgt ? 'wgt' : 'tpk'})`);
+
+            return { ...carried, identity, described: preview.describe(carried.archive, identity) };
+        };
+
         // Always re-signed with this television's own pair. Every source —
         // the catalogue, an upload, a GitHub release, a stick in the side of
         // the set — arrives here and leaves signed by the same certificate.
@@ -120,13 +142,26 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
         // all. Below that it is the difference between "packages this
         // television's owner signed" and "packages", which is worth 150ms.
         const resign = async (carried) => {
+            // The identity goes out with this phase, which is the first one
+            // after the bytes are in hand. Until here whatever asked for the
+            // install has had nothing but the reference it typed — a repo
+            // name, a URL, a filename off a stick — and the two steps left are
+            // the slow ones to sit through looking at that. So the screen
+            // showing "SushyDev/tizen-homebrew" becomes the screen showing
+            // Tizen Homebrew, with its own icon on it, before the signing
+            // starts rather than after it.
+            //
+            // Before the certificate check, deliberately: a set with no pair
+            // stored refuses here, and a refusal that names the application it
+            // refused is worth more than one naming the file it arrived in.
+            report('resigning', carried.identity.name || carried.identity.packageId,
+                { identity: carried.described });
+
             if (!config.hasCertificates(carried.state.duid)) {
                 throw refuse('certsMissing',
                     'Packages are signed with this TV\'s own certificate pair, and none is ' +
                     'stored yet. Send one first — see `npm run certs`.');
             }
-
-            report('resigning');
 
             const sign = await resigner();
             const { archive, device, files } = await sign(carried.archive);
@@ -136,24 +171,9 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
             return { ...carried, archive };
         };
 
-        const readIdentity = (carried) => {
-            const identity = manifest.identify(carried.archive);
-
-            // Until this line the phone has had nothing but the reference
-            // somebody typed — a repo name, a URL, a filename off a stick.
-            // This is the first moment anything here knows what the package
-            // actually *is*, so it goes out with the phase rather than waiting
-            // for the install to finish: the screen showing "SushyDev/tube"
-            // becomes the screen showing Tube, with its own icon on it.
-            report('staging', identity.name || identity.packageId,
-                { identity: preview.describe(carried.archive, identity) });
-            say.info(`identified ${identity.name || 'an unnamed package'} ${identity.version || ''} ` +
-                `(${identity.packageId}${identity.appId ? `, app ${identity.appId}` : ''}, ${identity.isWgt ? 'wgt' : 'tpk'})`);
-
-            return { ...carried, identity };
-        };
-
         const stageOnDisk = (carried) => {
+            report('staging', carried.identity.name || carried.identity.packageId);
+
             const stagedPath = installer.stage(carried.archive, carried.identity);
 
             say.ok(`staged ${size(carried.archive.length)} to ${stagedPath}`);
@@ -205,8 +225,9 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
         try {
             const readied = await probeReadiness();
             const acquired = await acquirePackage(readied);
-            const signed = await resign(acquired);
-            const staged = stageOnDisk(readIdentity(signed));
+            const identified = readIdentity(acquired);
+            const signed = await resign(identified);
+            const staged = stageOnDisk(signed);
             const installed = await runInstaller(staged);
             const outcome = recordOutcome(installed);
 

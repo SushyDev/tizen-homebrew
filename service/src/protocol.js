@@ -24,7 +24,7 @@ const Inbound = {
 const Outbound = {
     HELLO: 'hello',                 // { ok, needsPin }
     STATE: 'state',                 // DeviceState
-    CATALOG: 'catalog',             // [CatalogEntry]
+    CATALOG: 'catalog',             // { entries: [CatalogEntry], stale, source }
     PROGRESS: 'progress',           // { phase, detail?, identity? }
     DONE: 'done',                   // { packageId, appId }
     ERROR: 'error',                 // { code, message, remedy?, fatal }
@@ -34,6 +34,12 @@ const Outbound = {
     RELAY_DATA: 'relayData',        // { id, chunk }
     RELAY_END: 'relayEnd'           // { id, output, truncated? }
 };
+
+// A catalogue may arrive twice for one request. The list itself is sent the
+// moment it is in hand; where the television is holding apps the catalogue
+// also lists, a second one follows with `installed` and `update` marked on
+// those rows — see install/updates.js, which spends a request per installed
+// app to learn it and must not hold up the first send to do it.
 
 // An `identity` — on a progress message and on the packages in a directory
 // listing — is what `install/preview.js` read out of the archive itself:

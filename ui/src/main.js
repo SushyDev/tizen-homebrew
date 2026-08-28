@@ -212,9 +212,10 @@ const { send } = connect({
             progress: () => ({
                 phase: payload.phase,
                 phaseDetail: payload.detail,
-                // Sent once, with the staging phase — the first moment the
-                // service knows what it is holding. Every other progress
-                // message leaves what was found in place.
+                // Sent once, with the re-signing phase — the first moment
+                // the service knows what it is holding, which is as soon as
+                // the download finishes. Every other progress message leaves
+                // what was found in place.
                 identity: payload.identity || store.get().identity,
                 error: null,
                 done: null

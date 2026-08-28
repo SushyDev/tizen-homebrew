@@ -33,6 +33,7 @@ const artwork = (letter, top, bottom) => `data:image/svg+xml;base64,${btoa(
 
 const TUBE = artwork('Y', '#ff4d4d', '#9b0000');
 const JELLYFIN = artwork('J', '#aa5cd6', '#00a4dc');
+const HOMEBREW = artwork('H', '#7fe3ff', '#0a5f80');
 
 // What the service read out of the package it is installing: the same shape
 // whichever end read it — see install/preview.js and core/package.js.
@@ -45,6 +46,12 @@ const base = {
     connection: 'connected', paired: true, pin: '', pinError: null, restoring: false, themeOn: true,
     device: { onTv: true, ready: true, platformVersion: '6.5' },
     catalog: [
+        // The first row is the channel updating itself, which is the one state
+        // in this list that is not just a button: the version beside the name
+        // is what is on offer, the line under it is what would be replaced,
+        // and the lit button is the only one on the screen. See
+        // install/updates.js for the end that decides it.
+        { id: 'homebrew', name: 'Tizen Homebrew', version: '0.2.0', installed: '0.1.0', update: true, description: 'This app. Updates itself.', icon: HOMEBREW, source: { type: 'github', ref: 'SushyDev/tizen-homebrew' } },
         { id: 'tube', name: 'YouTube', version: '0.1.0', description: 'YouTube without the advertisements', icon: TUBE, source: { type: 'github', ref: 'SushyDev/tube' } },
         { id: 'jellyfin', name: 'Jellyfin', version: '10.9.1', description: 'Your own media server', icon: JELLYFIN, source: { type: 'github', ref: 'jellyfin/jellyfin-tizen' } },
         { id: 'kodi', name: 'Kodi', version: '21.0', description: 'The media centre, ported', icon: null, source: { type: 'url', ref: 'https://example.invalid/Kodi.wgt' } }

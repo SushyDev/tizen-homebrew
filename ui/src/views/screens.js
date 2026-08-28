@@ -192,14 +192,30 @@ const section = (label, body, footer = '') => html`
     ${footer}
   </div>`;
 
+// The line under a catalogue app's name.
+//
+// Normally what the app is. Where this television is already holding it and
+// something newer has been released since — `update`, decided by the service
+// in install/updates.js, which is the only end that has both versions — the
+// numbers are the more useful fact by a distance. The version beside the name
+// is the one on offer, so this is the one it would be replacing.
+const catalogued = (app) => (app.update
+    ? html`<span class="small truncate"><span class="mono">${app.installed}</span> installed</span>`
+    : html`<span class="small truncate">${app.description || app.source.ref}</span>`);
+
+// An update is the one row in this list somebody came here to press, so it is
+// the one row that is lit. Everything else about it is the same install: the
+// same entry, resolved the same way, re-signed for this set like anything
+// else — including Tizen Homebrew updating itself, which is an ordinary
+// install of an app that happens to be this one.
 const catalog = (state) => section('Available', state.catalog.length === 0
     ? html`<p class="small">Nothing listed yet. Use upload, github or url.</p>`
     : html`<div class="list">
         ${state.catalog.map((app) => html`
           <div class="row split">
-            ${identity(app, html`<span class="small truncate">${app.description || app.source.ref}</span>`)}
-            <button class="btn btn-ghost" data-focus="app:${app.id}"
-                    data-on-click="install:catalog:${app.id}">install</button>
+            ${identity(app, catalogued(app))}
+            <button class="btn ${app.update ? 'btn-signal' : 'btn-ghost'}" data-focus="app:${app.id}"
+                    data-on-click="install:catalog:${app.id}">${app.update ? 'update' : 'install'}</button>
           </div>`)}
       </div>`,
     html`<button class="btn btn-ghost btn-start" data-focus="refresh"

@@ -46,6 +46,12 @@ const usable = (entry) => {
         name: entry.name,
         description: typeof entry.description === 'string' ? entry.description : '',
         version: typeof entry.version === 'string' ? entry.version : null,
+        // The id the app installs under, where the entry names one. It is what
+        // `install/updates.js` holds against the television's own package list
+        // to work out whether an app is already here and out of date — an
+        // entry without one is never anything but "install", which is what
+        // every entry was before this existed.
+        packageId: typeof entry.packageId === 'string' ? entry.packageId : null,
         // https only, for the same reason sources.js requires it of a package
         // URL. An icon is a much smaller thing to be wrong about, but it comes
         // out of the same catalogue and there is no argument for holding it to

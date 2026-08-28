@@ -2,14 +2,26 @@
 
 // Signs and packages the .wgt.
 //
-//   npm run package
+//   npm run package                signed for this machine's television
+//   npm run package -- --unsigned  signed by nobody, for Tizen Homebrew
+//
+// A signature names the television it may be installed on — the device id is
+// in the distributor certificate, and Tizen 7 enforces it — so a signed build
+// is for `npm run bootstrap` onto your own set. Tizen Homebrew re-signs
+// everything it installs, itself included, so the unsigned .wgt is the one
+// that reaches anybody else's TV. That is what a release carries; a TV will
+// not take it over sdb.
 //
 // Always builds first: packaging stale output is the kind of mistake that
 // costs an hour of confused debugging on the TV.
 
 const { execFileSync } = require('child_process');
-const { existsSync, mkdirSync, statSync, rmSync, cpSync } = require('fs');
-const { join, dirname } = require('path');
+const {
+    existsSync, mkdirSync, statSync, rmSync, cpSync, readdirSync, readFileSync, writeFileSync
+} = require('fs');
+const { join, dirname, relative, sep } = require('path');
+
+const JSZip = require('jszip');
 
 const ui = require('./ui.js');
 const { load, ROOT } = require('./config.js');
@@ -95,30 +107,25 @@ function checkPrerequisites() {
     return { p12, password, distributor, distributorPassword, tizenjs };
 }
 
-function packageApp(certificate) {
-    const staging = join(ROOT, '.package');
-    const outPath = join(ROOT, APP.output);
-
-    rmSync(staging, { recursive: true, force: true });
-    mkdirSync(staging, { recursive: true });
-    mkdirSync(join(ROOT, 'release'), { recursive: true });
-
-    // Copy the allowlist in. A missing entry is a build problem, not something
-    // to quietly ship without.
-    APP.include.forEach((relative) => {
-        const from = join(ROOT, relative);
+// Copies the allowlist into an empty directory: the package as it will be
+// read. A missing entry is a build problem, not something to quietly ship
+// without.
+function stageContents(staging) {
+    APP.include.forEach((relativePath) => {
+        const from = join(ROOT, relativePath);
         if (!existsSync(from)) {
             throw friendly(
-                `${relative} is missing, and it must be in the package.\n` +
+                `${relativePath} is missing, and it must be in the package.\n` +
                 '  Run `npm run build` first.'
             );
         }
-        const to = join(staging, relative);
+        const to = join(staging, relativePath);
         mkdirSync(dirname(to), { recursive: true });
         cpSync(from, to, { recursive: true });
     });
+}
 
-    const started = Date.now();
+function signWith(certificate, staging, outPath) {
     try {
         execFileSync(certificate.tizenjs, [
             'build', '.',
@@ -132,43 +139,88 @@ function packageApp(certificate) {
     } catch (e) {
         const output = `${e.stdout || ''}${e.stderr || ''}`.trim();
         throw friendly(`Packaging failed.\n\n${output || e.message}`);
+    }
+}
+
+// A .wgt is a zip, and the only thing tizenjs adds beyond one is the pair of
+// signature files. Same library, same options, same walk — so an unsigned
+// package differs from a signed one in exactly two entries, which is what
+// makes `install/resign.js` on the TV able to treat the two alike.
+async function zipUnsigned(staging, outPath) {
+    const zip = new JSZip();
+
+    (function add(directory) {
+        readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
+            const path = join(directory, entry.name);
+            if (entry.isDirectory()) return add(path);
+            // config.xml has to sit at the package root, so paths are stored
+            // relative to it, with the separator a zip is specified in.
+            zip.file(relative(staging, path).split(sep).join('/'), readFileSync(path));
+        });
+    })(staging);
+
+    writeFileSync(outPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
+}
+
+// The certificate is null for an unsigned package, and that is the only
+// difference after staging.
+async function packageApp(certificate) {
+    const staging = join(ROOT, '.package');
+    const outPath = join(ROOT, APP.output);
+
+    rmSync(staging, { recursive: true, force: true });
+    mkdirSync(staging, { recursive: true });
+    mkdirSync(join(ROOT, 'release'), { recursive: true });
+
+    const started = Date.now();
+    try {
+        stageContents(staging);
+        if (certificate) signWith(certificate, staging, outPath);
+        else await zipUnsigned(staging, outPath);
     } finally {
         rmSync(staging, { recursive: true, force: true });
     }
 
     if (!existsSync(outPath)) {
-        throw friendly(`tizenjs reported success but produced no file at ${APP.output}.`);
+        throw friendly(`Packaging reported success but produced no file at ${APP.output}.`);
     }
 
     return { ms: Date.now() - started, size: statSync(outPath).size, path: APP.output };
 }
 
-function main() {
+async function main() {
+    const unsigned = process.argv.indexOf('--unsigned') !== -1;
+
     // A release build refuses a placeholder catalogue URL. The URL is baked
     // into the package and every TV that installs it, so shipping the example
     // host produces an app whose catalogue is permanently empty.
     const release = process.argv.indexOf('--release') !== -1;
 
     const config = load({ requireReal: release });
-    const certificate = checkPrerequisites();
+
+    // Before the build, so a missing certificate costs a second rather than
+    // the whole build.
+    const certificate = unsigned ? null : checkPrerequisites();
 
     // Build first so the package can never contain stale bundles.
-    ui.heading('package', `v${config.version}`);
+    ui.heading('package', `v${config.version}${unsigned ? ' unsigned' : ''}`);
     ui.note(ui.style.dim('  building first...'));
     execFileSync('node', [join(__dirname, 'build.js')], { cwd: ROOT, stdio: 'inherit' });
 
-    ui.group('signing');
-    const result = packageApp(certificate);
+    ui.group(unsigned ? 'packaging' : 'signing');
+    const result = await packageApp(certificate);
     ui.ok('tizen homebrew', `${ui.bytes(result.size)} · ${result.path}`, result.ms);
 
     ui.blank();
-    ui.note('Packaged.');
-    ui.note(ui.style.dim('Install with `npm run bootstrap -- <tv-ip>`, or sdb install release/tizenhomebrew.wgt'));
+    if (unsigned) {
+        ui.note('Packaged, signed by nobody.');
+        ui.note(ui.style.dim('This is what a release carries: an installed Tizen Homebrew re-signs it for'));
+        ui.note(ui.style.dim('the TV it runs on. A set refuses it over sdb — package without --unsigned.'));
+    } else {
+        ui.note('Packaged.');
+        ui.note(ui.style.dim('Install with `npm run bootstrap -- <tv-ip>`, or sdb install release/tizenhomebrew.wgt'));
+    }
     ui.blank();
 }
 
-try {
-    main();
-} catch (err) {
-    ui.crash(err);
-}
+main().catch((err) => ui.crash(err));

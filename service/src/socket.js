@@ -36,7 +36,7 @@ const CLOSED_BECAUSE = {
  * Everything it needs is handed in: this file owns no state of its own beyond
  * whether a given connection has paired.
  */
-const attach = ({ server, store, authorise, installer, catalog, relay, refreshDevice, config, protocol, log }) => {
+const attach = ({ server, store, authorise, installer, catalog, updates, relay, refreshDevice, config, protocol, log }) => {
     const { Inbound, Outbound, ErrorCode, ProtocolError } = protocol;
 
     const say = log ? log.on('sock') : null;
@@ -130,6 +130,20 @@ const attach = ({ server, store, authorise, installer, catalog, relay, refreshDe
             const result = await catalog.fetch({ refresh: !!refresh });
             store.update({ catalog: result.entries });
             send(Outbound.CATALOG, result);
+
+            // And then again, once it is known which of those apps this
+            // television already has and whether any of them have moved on
+            // since. That costs a request to GitHub per installed app, which
+            // is not allowed to hold up the list: the rows arrive, and the
+            // ones with an update to offer say so a moment later.
+            //
+            // The stored catalogue is left as it was. What `sources.resolve`
+            // needs from an entry is its id and its source, and neither is
+            // touched here — an install started from an "update" row is the
+            // same install as one started from any other.
+            const marked = await updates.mark(result.entries, { refresh: !!refresh });
+
+            if (marked) send(Outbound.CATALOG, { ...result, entries: marked });
         };
 
         // Which app, from where, on whose behalf. The pipeline reports every
@@ -142,7 +156,8 @@ const attach = ({ server, store, authorise, installer, catalog, relay, refreshDe
             try {
                 const outcome = await installer.install(
                     { source, reference: ref },
-                    // `identity` arrives once, with the staging phase, and is
+                    // `identity` arrives once, with the re-signing phase —
+                    // the first one after the bytes are in hand — and is
                     // spelled out rather than spread: the pipeline's third
                     // argument is a place for a phase to say more, not a hole
                     // through which anything it happens to carry reaches a
