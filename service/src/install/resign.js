@@ -65,18 +65,30 @@ const openPair = (certificates) => {
  * down. Certificates for the wrong television are the one failure that looks
  * exactly like a working install, right up until the television refuses it.
  */
-const deviceOf = (p12) => p12.safeContents
+const devicesOf = (p12) => p12.safeContents
     .reduce((bags, contents) => bags.concat(contents.safeBags), [])
     .filter((bag) => bag.type === forge.pki.oids.certBag && bag.cert)
     .reduce((found, bag) => {
         const extension = bag.cert.getExtension('subjectAltName');
         const names = (extension && extension.altNames) || [];
 
-        return found || names
+        return found.concat(names
             .map((name) => /deviceid=(.+)$/.exec(name.value || ''))
             .filter(Boolean)
-            .map((match) => match[1])[0] || null;
-    }, null);
+            .map((match) => match[1]));
+    }, [])
+    .filter((device, index, all) => all.indexOf(device) === index);
+
+/**
+ * The first device a pair names, for the places that can only show one.
+ *
+ * Deciding anything on this is a mistake: `--duidList` is a list, one pair
+ * legitimately covers several sets — which is the whole point of `npm run
+ * mint` adding to it rather than replacing it — and folding that list down to
+ * its first entry made a certificate that covers *this* television look like
+ * one minted for somebody else's, with installs refused on the strength of it.
+ */
+const deviceOf = (p12) => devicesOf(p12)[0] || null;
 
 /**
  * Re-signs `archive` with the certificates stored for this television.
@@ -136,4 +148,4 @@ const resign = async (archive, certificates) => {
     };
 };
 
-module.exports = { resign, openPair, deviceOf, SIGNATURE_FILE };
+module.exports = { resign, openPair, deviceOf, devicesOf, SIGNATURE_FILE };

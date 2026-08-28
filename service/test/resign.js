@@ -10,8 +10,10 @@
 
 const forge = require('node-forge');
 const JSZip = require('jszip');
+const { mkdtempSync } = require('fs');
+const { tmpdir } = require('os');
 
-const { resign, openPair, deviceOf } = require('../src/install/resign.js');
+const { resign, openPair, deviceOf, devicesOf } = require('../src/install/resign.js');
 const fixture = require('./fixture.js');
 
 const results = [];
@@ -23,12 +25,15 @@ const check = (name, ok, detail) => {
 const PASSWORD = 'test-password';
 
 /**
- * A certificate pair naming one device, in the shape config.js stores.
+ * A certificate pair naming one or more devices, in the shape config.js stores.
+ *
+ * Several, because Samsung's `--duidList` takes a list and one pair covering
+ * every television you own is the supported arrangement, not an oddity.
  *
  * 1024-bit keys: this runs on every test invocation and the size proves
  * nothing here — RSA-SHA512 needs 752 bits and the television is not looking.
  */
-const mint = (device) => {
+const mint = (...devices) => {
     const certificate = (subject) => {
         const keys = forge.pki.rsa.generateKeyPair(1024);
         const cert = forge.pki.createCertificate();
@@ -44,7 +49,10 @@ const mint = (device) => {
 
         // The device binding, in the place a Samsung distributor certificate
         // carries it: a URI in the subjectAltName.
-        cert.setExtensions([{ name: 'subjectAltName', altNames: [{ type: 6, value: `URN:tizen:deviceid=${device}` }] }]);
+        cert.setExtensions([{
+            name: 'subjectAltName',
+            altNames: devices.map((device) => ({ type: 6, value: `URN:tizen:deviceid=${device}` }))
+        }]);
         cert.sign(keys.privateKey, forge.md.sha256.create());
 
         const asn1 = forge.pkcs12.toPkcs12Asn1(keys.privateKey, [cert], PASSWORD);
@@ -127,6 +135,46 @@ const run = async () => {
     {
         const { distributor } = openPair(pair);
         check('a stored pair reports the device it names', deviceOf(distributor) === 'TESTSET1234', String(deviceOf(distributor)));
+    }
+
+    // --- a pair that names several televisions -----------------------------
+    //
+    // The regression this guards: reading only the first entry of a --duidList
+    // made a certificate that legitimately covers this TV look like one minted
+    // for somebody else's, and installs were refused on the strength of it.
+    {
+        const many = mint('OTHERSET0001', 'TESTSET1234', 'OTHERSET0002');
+        const { distributor } = openPair(many);
+
+        const found = devicesOf(distributor);
+
+        check('a pair reports every device it names',
+            found.join(',') === 'OTHERSET0001,TESTSET1234,OTHERSET0002', found.join(','));
+
+        check('deviceOf still answers with the first of them',
+            deviceOf(distributor) === 'OTHERSET0001', String(deviceOf(distributor)));
+
+        // The place the wrong answer actually cost something: config.js decides
+        // whether an install may proceed on this television.
+        process.env.HOMEBREW_CONFIG_DIR = mkdtempSync(`${tmpdir()}/homebrew-resign-test-`);
+        const config = require('../src/config.js');
+
+        config.update({ ...many, certDuid: found[0], certDuids: found });
+
+        check('a TV named among several is allowed to install',
+            config.hasCertificates('TESTSET1234') === true, 'a covered TV was refused');
+
+        check('a TV named nowhere in the list is still refused',
+            config.hasCertificates('NOTOURS0001') === false, 'an uncovered TV was allowed');
+
+        // A config written before certDuids existed carries only the one name.
+        config.update({ certDuids: null, certDuid: 'TESTSET1234' });
+
+        check('an older config with a single name still works',
+            config.hasCertificates('TESTSET1234') === true && config.hasCertificates('NOTOURS0001') === false,
+            'the single-name fallback broke');
+
+        config.clear();
     }
 
     const failed = results.filter((ok) => !ok).length;

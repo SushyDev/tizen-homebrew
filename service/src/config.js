@@ -15,7 +15,8 @@ const DEFAULTS = {
     authorCert: null,        // base64 of the DER .p12
     distributorCert: null,   // base64 of the DER .p12
     password: null,          // generated when the certificates are created
-    certDuid: null,          // the DUID the certificates are bound to
+    certDuid: null,          // the first DUID the certificates name, for display
+    certDuids: null,         // every DUID they name — `--duidList` is a list
     certCreatedAt: null,
     catalogUrl: null,        // overrides the built-in origin when set
     lastInstalled: []
@@ -53,7 +54,13 @@ function update(patch) {
 function hasCertificates(duid) {
     const config = read();
     if (!config.authorCert || !config.distributorCert || !config.password) return false;
-    if (duid && config.certDuid && config.certDuid !== duid) return false;
+
+    // A pair that names this TV among several is as usable here as one minted
+    // for it alone. Configs written before certDuids existed recorded only the
+    // first name, so they are read as a list of one rather than ignored.
+    const named = config.certDuids || (config.certDuid ? [config.certDuid] : []);
+
+    if (duid && named.length && named.indexOf(duid) === -1) return false;
     return true;
 }
 
@@ -63,6 +70,7 @@ function forgetCertificates() {
         distributorCert: null,
         password: null,
         certDuid: null,
+        certDuids: null,
         certCreatedAt: null
     });
 }

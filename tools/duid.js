@@ -35,8 +35,6 @@
 // refused by the TV with "Check certificate error", which names neither the
 // certificate nor the device.
 
-const { existsSync, readFileSync } = require('fs');
-
 const ui = require('./ui.js');
 const certificates = require('./certificates.js');
 const { duidOf, describe, localAddressFor, DEVICE_API_PORT } = require('./tv.js');
@@ -46,41 +44,20 @@ function friendly(message) {
 }
 
 /**
- * The device a distributor certificate was minted for.
+ * Every device a distributor certificate was minted for.
  *
  * Offline, and true whether or not the TV is reachable — but it describes the
  * certificate, not whatever is at the other end of the network, which is the
  * whole reason it is reported separately.
+ *
+ * A list, because `--duidList` is one: reporting only the first name made a
+ * pair that covers this television read as one minted for somebody else's.
  */
-function boundDevice() {
-    const { distributor: p12Path, distributorPassword: password } = certificates.locate();
+function boundDevices() {
+    const { distributor: path, distributorPassword: password } = certificates.locate();
+    const devices = certificates.devicesIn(path, password);
 
-    if (!password || !existsSync(p12Path)) return null;
-
-    try {
-        const forge = require('node-forge');
-
-        const p12 = forge.pkcs12.pkcs12FromAsn1(
-            forge.asn1.fromDer(readFileSync(p12Path).toString('binary')),
-            password
-        );
-
-        const bags = p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag] || [];
-
-        for (const bag of bags) {
-            const alt = bag.cert && bag.cert.getExtension('subjectAltName');
-
-            for (const name of (alt && alt.altNames) || []) {
-                const match = /deviceid=(.+)$/.exec(name.value || '');
-                if (match) return { device: match[1], path: p12Path };
-            }
-        }
-    } catch (e) {
-        // A wrong password or an unreadable file is not worth failing over:
-        // this is the consolation prize, not the answer.
-    }
-
-    return null;
+    return devices.length ? { devices, path } : null;
 }
 
 async function main() {
@@ -113,7 +90,7 @@ async function main() {
 
     const measured = await duidOf(ip, pin);
 
-    const bound = boundDevice();
+    const bound = boundDevices();
 
     if (measured) {
         ui.ok('duid', measured);
@@ -121,15 +98,15 @@ async function main() {
             ? '  from `getduid`, relayed through Tizen Homebrew — the value a certificate binds to'
             : '  from `getduid` over sdb — the value a certificate binds to'));
 
-        if (bound && bound.device === measured) {
-            ui.note(ui.style.dim(`  the certificate in ${bound.path} is bound to this TV`));
+        if (bound && bound.devices.indexOf(measured) !== -1) {
+            ui.note(ui.style.dim(`  the certificate in ${bound.path} covers this TV`));
             ui.blank();
             return;
         }
 
         if (bound) {
             ui.blank();
-            ui.warn(`the certificate in ${bound.path} is bound to ${bound.device}, which is NOT this television`);
+            ui.warn(`the certificate in ${bound.path} names ${bound.devices.join(', ')} — none of which is this television`);
             ui.note(ui.style.dim('  packages signed with it upload fine and are then refused with'));
             ui.note(ui.style.dim('  "Check certificate error", which names neither the certificate nor the device'));
         }
@@ -148,8 +125,9 @@ async function main() {
     ui.warn('sdb would not answer, so this TV was not asked');
 
     if (bound) {
-        ui.info('duid', bound.device);
-        ui.note(ui.style.dim(`  not from the TV — this is the device ${bound.path} was minted for`));
+        ui.info('duid', bound.devices.join(', '));
+        ui.note(ui.style.dim(`  not from the TV — ${bound.devices.length > 1 ? 'these are the devices' : 'this is the device'} ${bound.path} names,`));
+        ui.note(ui.style.dim('  and this television may or may not be among them'));
     } else if (device) {
         ui.note(ui.style.dim(`  and no certificate to read one out of either`));
     }
@@ -161,6 +139,22 @@ async function main() {
     }
 
     ui.blank();
+
+    // The relay is the answer on a set pinned to loopback, and it is one
+    // argument away — so when no PIN was given, that is the first thing to
+    // say, not the third. Without it this command can only read a certificate
+    // back to somebody who is asking precisely because they doubt it.
+    if (!pin) {
+        ui.note('To ask the television itself, give it the PIN from the TV screen:');
+        ui.blank();
+        ui.note(ui.style.dim(`  npm run duid -- ${ip} <pin>`));
+        ui.blank();
+        ui.note(ui.style.dim('  That relays `getduid` through Tizen Homebrew, which reaches sdbd over'));
+        ui.note(ui.style.dim('  loopback — no repointing, and as authoritative as asking sdb directly.'));
+        ui.blank();
+        return;
+    }
+
     ui.note('To ask the television itself, sdbd has to accept this machine. Either:');
     ui.blank();
     ui.note(ui.style.dim(`  · point the TV's Host PC IP at ${mine || 'this machine'} and restart it, then run this again`));
