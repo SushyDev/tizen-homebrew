@@ -1,3 +1,10 @@
 {
-  "apps": []
+  "apps": [
+    {
+      "id": "youtube",
+      "name": "YouTube",
+      "description": "YouTube for Tizen",
+      "source": { "type": "github", "ref": "SushyDev/tizen-youtube" }
+    }
+  ]
 }
