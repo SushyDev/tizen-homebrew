@@ -32,6 +32,16 @@ const check = (name, ok, detail) => {
 
 // --- reading a package ---------------------------------------------------
 
+// What the package under test actually declares.
+//
+// Read out of the same config.xml the fixture packages, rather than written
+// out below as a literal. A literal was there, and it made this suite fail on
+// every version bump — which is precisely what a release is: `npm run version
+// -- 0.1.1`, commit, tag, and the release build stops on a test about icons.
+// The reader is what is being checked here, not the number it happens to find.
+const declared = /<widget\b[^>]*\bversion="([^"]*)"/
+    .exec(readFileSync(join(__dirname, '..', '..', 'config.xml'), 'utf8'))[1];
+
 {
     // The manifest is deflated in this one and the icon is stored, which is
     // how a packaging tool writes them. That means the walk has to inflate one
@@ -41,7 +51,7 @@ const check = (name, ok, detail) => {
     check('a package is read down to its name, version and id',
         described &&
         described.name === 'Tizen Homebrew' &&
-        described.version === '0.1.0' &&
+        described.version === declared &&
         described.packageId === 'GJBBYNLkgP' &&
         described.appId === 'GJBBYNLkgP.TizenHomebrew',
         JSON.stringify(described && { ...described, icon: null }));
