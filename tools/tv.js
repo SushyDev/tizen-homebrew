@@ -14,9 +14,15 @@
 // certificate minted against it produces packages a television refuses with
 // "Check certificate error" and no further explanation.
 
+const { networkInterfaces } = require('os');
+
 const sdb = require('../service/src/tv/sdb.js');
 
 const PORT = 8091;
+
+// The read-only device API every Samsung TV serves, which answers before
+// anything has been installed and without sdbd's permission.
+const DEVICE_API_PORT = 8001;
 
 const friendly = (message) => Object.assign(new Error(message), { isFriendly: true });
 
@@ -122,4 +128,72 @@ const duidOf = async (ip, pin) => {
     });
 };
 
-module.exports = { duidOf, overSdb, overRelay, PORT };
+
+/**
+ * What the television says about itself on port 8001.
+ *
+ * Never throws: whether a set answered at all is the first thing every one of
+ * these tools wants to know, and an exception is a worse way to say no. The
+ * `duid` field it serves is deliberately not read here — it is a different
+ * identifier entirely, and the comment at the top of duid.js explains what it
+ * costs to believe it.
+ */
+const describe = async (ip) => {
+    try {
+        const response = await fetch(`http://${ip}:${DEVICE_API_PORT}/api/v2/`, {
+            signal: AbortSignal.timeout(5000)
+        });
+
+        if (!response.ok) return null;
+
+        const { device } = await response.json();
+        return device || null;
+    } catch (e) {
+        return null;
+    }
+};
+
+/**
+ * This machine's address on the same subnet as the TV.
+ *
+ * Every one of these tools ends up printing an instruction that has to name
+ * the exact number somebody types into a television, and "this machine" is not
+ * that number.
+ */
+const localAddressFor = (tvIp) => {
+    const prefix = `${tvIp.split('.').slice(0, 3).join('.')}.`;
+    const interfaces = networkInterfaces();
+    let fallback = null;
+
+    for (const name in interfaces) {
+        for (const entry of interfaces[name] || []) {
+            if (entry.family !== 'IPv4' || entry.internal) continue;
+            if (entry.address.indexOf(prefix) === 0) return entry.address;
+            if (!fallback) fallback = entry.address;
+        }
+    }
+
+    return fallback;
+};
+
+/**
+ * Why a television would not say what it is, phrased as something to do.
+ *
+ * Both routes into `duidOf` fail quietly, and for good reasons: a set pinned to
+ * loopback is *supposed* to refuse sdb, and the relay is supposed to need an
+ * app that somebody has opened. So the answer comes back null and never a
+ * reason. This is the reason, and which one it is depends only on which route
+ * was tried.
+ */
+const whyNoDuid = (ip, pin) => `${ip} did not answer with a device id.\n\n` + (pin
+    ? '  The PIN goes through Tizen Homebrew, so the app has to be open on the TV —\n' +
+      '  the service only runs while it is. The PIN changes every time it starts, so\n' +
+      '  take the one on the screen now.'
+    : '  That was asked over sdb, so sdbd is not accepting this machine. On the TV:\n' +
+      '  Apps > 12345 (or hold Enter) > Settings, set\n\n' +
+      `    Host PC IP  =  ${localAddressFor(ip) || '<this machine\'s IP>'}\n\n` +
+      '  and restart it — that value is only read at startup.\n\n' +
+      '  Or, if this set is already pinned to 127.0.0.1, read the code off its screen\n' +
+      '  and the question goes through Tizen Homebrew instead.');
+
+module.exports = { duidOf, overSdb, overRelay, describe, localAddressFor, whyNoDuid, PORT, DEVICE_API_PORT };

@@ -86,11 +86,7 @@ function checkPrerequisites() {
         throw friendly(
             'No distributor certificate, and the stock Tizen one does not work:\n' +
             '  a Samsung TV rejects it at install, so this cannot be skipped.\n\n' +
-            `  Looked for:  ${distributor}\n\n` +
-            '  Mint a pair bound to this TV, with the DUID from `sdb shell 0 getduid`:\n\n' +
-            '    npx tizenjs create-samsung-cert --privilege Public \\\n' +
-            '      --name <you> --email <you@example.com> --password <password> \\\n' +
-            `      --duidList <TV-DUID> --output ${dirname(p12)}\n\n` +
+            `  Looked for:  ${distributor}\n\n  ${certificates.howToMint()}\n\n` +
             '  That writes author.p12 and distributor.p12 side by side. Point\n' +
             '  TIZEN_AUTHOR_P12 at the author, or set TIZEN_DISTRIBUTOR_P12 explicitly.'
         );

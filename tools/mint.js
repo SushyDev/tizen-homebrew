@@ -2,9 +2,16 @@
 
 // Minting a certificate pair for one television.
 //
-//   npm run mint -- 192.168.2.9 <pin>     asks the TV which device it is
+//   npm run mint -- 192.168.2.9           asks the TV which device it is
+//   npm run mint -- 192.168.2.9 <pin>     the same, once the TV is pinned to loopback
 //   npm run mint -- --duid BDCPQZFMHIZII  when you already know
 //   npm run mint -- <tv-ip> <pin> --new-author   start the pair over
+//
+// Point it at a television and it resolves the DUID itself, which is the way
+// round that cannot go wrong. Copying one by hand can: a model name and a
+// device id are both thirteen anonymous characters, and a pair minted against
+// the wrong string signs packages the TV refuses with "Check certificate
+// error", naming neither.
 //
 // Public, which is the level anybody can mint for themselves. The app claims
 // no privilege above it — see config.xml, where two Samsung ones were dropped
@@ -50,8 +57,13 @@ const { writeFileSync, mkdirSync, existsSync } = require('fs');
 const { join } = require('path');
 
 const ui = require('./ui.js');
+const args = require('./args.js');
 const certificates = require('./certificates.js');
-const { duidOf } = require('./tv.js');
+const { duidOf, whyNoDuid } = require('./tv.js');
+
+// The flags that consume the token after them. Without this, `--duid <DUID>`
+// left the DUID sitting in the slot the TV address is read from — see args.js.
+const VALUED = ['--duid', '--privilege', '--password', '--name', '--output'];
 
 // The port is not arbitrary: it is the one registered in the redirect_uri that
 // Samsung's sign-in will send the browser back to.
@@ -113,13 +125,10 @@ const signIn = () => new Promise((resolve, reject) => {
 });
 
 const main = async () => {
-    const args = process.argv.slice(2);
-    const named = (flag) => {
-        const at = args.indexOf(flag);
-        return at === -1 ? null : args[at + 1];
-    };
+    const argv = args.parse(process.argv.slice(2), VALUED);
+    const named = (flag) => argv.value(flag);
 
-    const [ip, pin] = args.filter((argument) => argument[0] !== '-');
+    const [ip, pin] = argv.positionals;
     const privilege = named('--privilege') || 'Public';
     const password = named('--password') || Math.random().toString(36).slice(2, 12);
 
@@ -133,21 +142,26 @@ const main = async () => {
     // Several can be named at once, because collecting device ids is the part
     // of setting up a fleet that costs a walk to each set — and every mint
     // after the first is another sign-in.
-    const asked = named('--duid')
-        ? named('--duid').split(',').map((device) => device.trim()).filter(Boolean)
+    const listed = named('--duid');
+
+    const asked = listed
+        ? listed.split(',').map((device) => device.trim()).filter(Boolean)
         : (ip ? [await duidOf(ip, pin)].filter(Boolean) : []);
 
-    const duid = asked[0];
-
-    if (!duid) {
+    if (!ip && !asked.length) {
         throw friendly(
             'Which television?\n\n' +
+            '  npm run mint -- <tv-ip>              ask the TV over sdb\n' +
             '  npm run mint -- <tv-ip> <pin>        ask Tizen Homebrew on the TV\n' +
             '  npm run mint -- --duid <DUID>        when you already know it\n' +
-            '  npm run mint -- --duid <A>,<B>,<C>   several at once\n\n' +
-            '  `npm run duid -- <tv-ip> [pin]` prints it on its own.'
+            '  npm run mint -- --duid <A>,<B>,<C>   several at once'
         );
     }
+
+    // A television that was named and would not answer. Saying so here, rather
+    // than falling through to "which television?", is the difference between an
+    // address to fix and a question about what was typed.
+    if (!asked.length) throw friendly(whyNoDuid(ip, pin));
 
     // Every television this pair already covers, plus the one being added. A
     // second set costs a distributor certificate, not a new everything.
@@ -160,7 +174,9 @@ const main = async () => {
     );
 
     // Keeping the author is the default, and the reason is in the header.
-    const keeping = !named('--new-author') && Boolean(existing.password) && existsSync(existing.author) && covered.length > 0;
+    const keeping = !argv.has('--new-author') && Boolean(existing.password) && existsSync(existing.author) && covered.length > 0;
+
+    if (ip && !listed) ui.info('asked', `${ip} ${pin ? 'through Tizen Homebrew' : 'over sdb'}`);
 
     ui.info('adding', asked.map((device) => device + (covered.indexOf(device) === -1 ? '' : ' (already covered)')).join(', '));
     ui.info('covering', devices.join(', '));

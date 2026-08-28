@@ -89,7 +89,8 @@ const missing = (certificates) => [
 
 /** The instructions for making one, which every caller ends up printing. */
 const howToMint = () => 'Mint a pair bound to your television:\n\n' +
-    '    npm run mint -- <tv-ip> <pin>       ask the TV which device it is\n' +
+    '    npm run mint -- <tv-ip>             ask the TV which device it is\n' +
+    '    npm run mint -- <tv-ip> <pin>       the same, once it is pinned to loopback\n' +
     '    npm run mint -- --duid <TV-DUID>    when you already know';
 
 module.exports = { locate, missing, devicesIn, howToMint, DEFAULT_DIR };

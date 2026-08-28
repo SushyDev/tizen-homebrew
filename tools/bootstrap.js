@@ -29,11 +29,11 @@
 
 const { readFileSync, existsSync, statSync } = require('fs');
 const { join, dirname } = require('path');
-const { networkInterfaces } = require('os');
 
 const ui = require('./ui.js');
 const { ROOT } = require('./config.js');
 const certificates = require('./certificates.js');
+const { localAddressFor } = require('./tv.js');
 const sdb = require('../service/src/tv/sdb.js');
 
 // Where packages are staged on the TV before vd_appinstall reads them. This is
@@ -58,23 +58,6 @@ const CHUNK = 4000;
 
 function friendly(message) {
     return Object.assign(new Error(message), { isFriendly: true });
-}
-
-// This machine's address on the same subnet as the TV, so the instructions can
-// name the exact number to type instead of saying "this machine".
-function localAddressFor(tvIp) {
-    const prefix = tvIp.split('.').slice(0, 3).join('.');
-    const interfaces = networkInterfaces();
-    let fallback = null;
-
-    for (const name in interfaces) {
-        for (const entry of interfaces[name] || []) {
-            if (entry.family !== 'IPv4' || entry.internal) continue;
-            if (entry.address.indexOf(`${prefix}.`) === 0) return entry.address;
-            if (!fallback) fallback = entry.address;
-        }
-    }
-    return fallback;
 }
 
 function frame(tag, value) {

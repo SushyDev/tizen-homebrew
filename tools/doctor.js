@@ -85,7 +85,7 @@ check('signing certificate (packaging only)', () => {
     if (!existsSync(distributor)) {
         throw new Error(
             `No distributor certificate at ${distributor}.\n` +
-            '      Mint one: npx tizenjs create-samsung-cert --duidList <TV-DUID> ...'
+            '      Mint one: npm run mint -- <tv-ip>'
         );
     }
 

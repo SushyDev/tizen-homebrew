@@ -19,6 +19,7 @@ const { join } = require('path');
 const { homedir } = require('os');
 
 const ui = require('./ui.js');
+const certificates = require('./certificates.js');
 
 const PORT = 8091;
 const DEFAULT_DIR = join(homedir(), '.tizen-certs');
@@ -52,11 +53,7 @@ const main = async () => {
 
         if (missing.length) {
             throw friendly(
-                `No certificate at:\n  ${missing.join('\n  ')}\n\n` +
-                '  Mint a pair bound to this TV — `npm run duid -- <tv-ip>` gives you the id:\n\n' +
-                '    npx tizenjs create-samsung-cert --privilege Public \\\n' +
-                '      --name <you> --email <you@example.com> --password <password> \\\n' +
-                `      --duidList <TV-DUID> --output ${DEFAULT_DIR}`
+                `No certificate at:\n  ${missing.join('\n  ')}\n\n  ${certificates.howToMint()}`
             );
         }
 

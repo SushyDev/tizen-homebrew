@@ -35,51 +35,14 @@
 // refused by the TV with "Check certificate error", which names neither the
 // certificate nor the device.
 
-const { networkInterfaces } = require('os');
 const { existsSync, readFileSync } = require('fs');
 
 const ui = require('./ui.js');
 const certificates = require('./certificates.js');
-const { duidOf } = require('./tv.js');
-
-const DEVICE_API_PORT = 8001;
+const { duidOf, describe, localAddressFor, DEVICE_API_PORT } = require('./tv.js');
 
 function friendly(message) {
     return Object.assign(new Error(message), { isFriendly: true });
-}
-
-// The address on this machine that the TV would have to be pointed at, for the
-// message that has to tell somebody what to type into a television.
-function localAddressFor(tvIp) {
-    const prefix = tvIp.split('.').slice(0, 3).join('.');
-    const interfaces = networkInterfaces();
-    let fallback = null;
-
-    for (const name in interfaces) {
-        for (const entry of interfaces[name] || []) {
-            if (entry.family !== 'IPv4' || entry.internal) continue;
-            if (entry.address.indexOf(`${prefix}.`) === 0) return entry.address;
-            if (!fallback) fallback = entry.address;
-        }
-    }
-
-    return fallback;
-}
-
-/** What the TV says about itself on port 8001. Never throws; absence is an answer. */
-async function describe(ip) {
-    try {
-        const response = await fetch(`http://${ip}:${DEVICE_API_PORT}/api/v2/`, {
-            signal: AbortSignal.timeout(5000)
-        });
-
-        if (!response.ok) return null;
-
-        const { device } = await response.json();
-        return device || null;
-    } catch (e) {
-        return null;
-    }
 }
 
 /**
