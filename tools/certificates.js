@@ -88,10 +88,8 @@ const missing = (certificates) => [
 ].filter(Boolean);
 
 /** The instructions for making one, which every caller ends up printing. */
-const howToMint = (directory) => 'Make a pair bound to your TV — `npm run duid -- <tv-ip>` gives you the id:\n\n' +
-    '    npx tizenjs create-samsung-cert --privilege Public \\\n' +
-    '      --name <you> --email <you@example.com> --password <password> \\\n' +
-    `      --duidList <TV-DUID> --output ${directory || DEFAULT_DIR}\n\n` +
-    `    echo -n '<password>' > ${join(directory || DEFAULT_DIR, 'author.pw')}`;
+const howToMint = () => 'Mint a pair bound to your television:\n\n' +
+    '    npm run mint -- <tv-ip> <pin>       ask the TV which device it is\n' +
+    '    npm run mint -- --duid <TV-DUID>    when you already know';
 
 module.exports = { locate, missing, devicesIn, howToMint, DEFAULT_DIR };

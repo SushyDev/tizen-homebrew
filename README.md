@@ -7,7 +7,7 @@ network and keep the same IP. This points it at `127.0.0.1` instead — the TV
 becomes its own developer machine — and puts the interface on your phone.
 After the one-time setup below, no computer is involved again.
 
-<img src="logo.png" width="96" align="right">
+<img src="icon.png" width="96" align="right">
 
 - Browse and install from a catalogue, a GitHub release, a URL, or a USB stick
 - Re-signs every package for your TV, so builds signed by other people install
@@ -48,6 +48,12 @@ and writes the result:
 ```sh
 npm run mint -- --duid <the-DUID>
 ```
+
+It mints at **partner** level, because `config.xml` declares
+`http://developer.samsung.com/privilege/productinfo` and a public certificate
+cannot carry that privilege. A television refuses such a package with
+`Security error : Invalid function parameter was given:<2>`, which mentions
+neither privileges nor certificates.
 
 That writes `author.p12`, `distributor.p12` and the password into
 `~/.tizen-certs`, which is where everything here looks by default.

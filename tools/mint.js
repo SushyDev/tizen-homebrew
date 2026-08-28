@@ -6,6 +6,16 @@
 //   npm run mint -- --duid BDCPQZFMHIZII  when you already know
 //   npm run mint -- <tv-ip> <pin> --new-author   start the pair over
 //
+// Partner, not Public. config.xml declares
+// `http://developer.samsung.com/privilege/productinfo`, which is a
+// partner-level privilege, and a Public distributor certificate cannot carry
+// it: the television refuses the package with
+//
+//     install failed[118, -22], reason: Security error : :Invalid function parameter was given:<2>
+//
+// — which mentions neither privileges nor certificates. `--privilege Public`
+// is there for an app that does not need them.
+//
 // A second television does not need a second pair. One distributor
 // certificate can name several devices, and this adds to the list rather than
 // replacing it — so the pair on this machine ends up covering every set you
@@ -114,7 +124,7 @@ const main = async () => {
     };
 
     const [ip, pin] = args.filter((argument) => argument[0] !== '-');
-    const privilege = named('--privilege') || 'Public';
+    const privilege = named('--privilege') || 'Partner';
     const password = named('--password') || Math.random().toString(36).slice(2, 12);
 
     ui.heading('mint');

@@ -32,6 +32,22 @@ function SdbError(code, message) {
 function Session(client) {
     this._client = client;
     this._closed = false;
+
+    // Nothing listens to the socket once `connect` has handed it over: its
+    // listeners are removed when the promise settles, deliberately, so they
+    // cannot fire twice. That leaves an unhandled 'error' event for anything
+    // that goes wrong afterwards — and in Node an unhandled 'error' is not a
+    // rejected promise, it is the process exiting with a stack trace.
+    //
+    // sdbd resets connections in ordinary use: a second client arriving, a
+    // television going to sleep mid-upload. Recording it here keeps that a
+    // failed command rather than a crash; whatever is in flight then ends on
+    // its own deadline, which every operation has.
+    const socket = client && client._socket;
+
+    if (socket) {
+        socket.on('error', (error) => { this._socketError = error; });
+    }
 }
 
 // Runs a command and collects its output.
@@ -91,6 +107,12 @@ Session.prototype.exec = function (command, options) {
 
         function onError(e) {
             finish(SdbError('sdbStreamError', `SDB stream error: ${e}`), null);
+        }
+
+        // A socket that died before this command was issued would otherwise
+        // only show up as a timeout, seconds later, saying nothing useful.
+        if (self._socketError) {
+            return finish(SdbError('sdbClosed', `SDB connection was lost: ${self._socketError.message}`), null);
         }
 
         function onEnd() {
