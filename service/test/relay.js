@@ -13,15 +13,15 @@ function check(name, ok, detail) {
 }
 
 // --- default posture ----------------------------------------------------
-const relay = new Relay({ packageId: 'qWn7pLd2Rk', log: () => {} });
+const relay = new Relay({ packageId: 'GJBBYNLkgP', log: () => {} });
 check('relay is off unless explicitly enabled', relay.enabled === false, String(relay.enabled));
 
 // --- self-destructive command detection ---------------------------------
 const SHOULD_REFUSE = [
     'buxton2ctl set-string system db/sdk/develop/ip 192.168.1.50',
     'buxton2ctl set-int32 system db/sdk/develop/mode 0',
-    'pkgcmd -u -n qWn7pLd2Rk',
-    'vd_appuninstall qWn7pLd2Rk'
+    'pkgcmd -u -n GJBBYNLkgP',
+    'vd_appuninstall GJBBYNLkgP'
 ];
 
 const SHOULD_ALLOW = [
@@ -36,12 +36,12 @@ const SHOULD_ALLOW = [
 
 SHOULD_REFUSE.forEach((command) => {
     check(`refuses: ${command.slice(0, 48)}`,
-        isSelfDestructive(command, 'qWn7pLd2Rk') === true, 'was allowed');
+        isSelfDestructive(command, 'GJBBYNLkgP') === true, 'was allowed');
 });
 
 SHOULD_ALLOW.forEach((command) => {
     check(`allows:  ${command.slice(0, 48)}`,
-        isSelfDestructive(command, 'qWn7pLd2Rk') === false, 'was refused');
+        isSelfDestructive(command, 'GJBBYNLkgP') === false, 'was refused');
 });
 
 // --- disabled relay refuses to run --------------------------------------

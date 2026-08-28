@@ -1,7 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="https://tizenhomebrew.local" version="0.1.0" viewmodes="maximized">
     <access origin="*" subdomains="true"></access>
-    <tizen:application id="qWn7pLd2Rk.TizenHomebrew" package="qWn7pLd2Rk" required_version="3.0"/>
+    <!-- The package id is arbitrary and is not a name: Tizen generates ten
+         random characters and every tool here reads it back out of this file
+         rather than hardcoding it.
+
+         It has been changed once. A failed update left the previous id in a
+         state the television would not install over — vd_appinstall answered
+         every attempt with "Security error : Invalid function parameter was
+         given:<2>", while the identical package under a different id installed
+         at once, and nothing reachable through sdbd's command allowlist could
+         clear it. If that ever happens again, changing this is the cure. -->
+    <tizen:application id="GJBBYNLkgP.TizenHomebrew" package="GJBBYNLkgP" required_version="3.0"/>
     <author>Tizen Homebrew</author>
     <content src="ui/dist/tv.html"/>
     <feature name="http://tizen.org/feature/screen.size.all"/>
@@ -42,7 +52,7 @@
 
     <!-- The headless half: serves the phone UI and drives SDB over loopback.
          The id suffix must match what tv.html launches. -->
-    <tizen:service id="qWn7pLd2Rk.TizenHomebrewService">
+    <tizen:service id="GJBBYNLkgP.TizenHomebrewService">
         <tizen:content src="service/dist/index.js"/>
         <tizen:name>TizenHomebrewService</tizen:name>
         <tizen:description>Serves the Tizen Homebrew UI and installs packages over loopback SDB.</tizen:description>

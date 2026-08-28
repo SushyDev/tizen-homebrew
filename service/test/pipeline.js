@@ -85,7 +85,7 @@ const run = async () => {
         );
 
         check('an upload installs end to end',
-            outcome.packageId === 'qWn7pLd2Rk', JSON.stringify(outcome));
+            outcome.packageId === 'GJBBYNLkgP', JSON.stringify(outcome));
         check('the steps run in order',
             phases.join(' → ') === 'probing → fetching → staging → installing', phases.join(' → '));
         check('the store is released afterwards', store.select('installing') === false, 'still marked installing');

@@ -60,7 +60,7 @@ const boot = () => {
     log.info('auth', `pairing pin ${PIN} — regenerated every start`);
     log.info('cat', 'origin https://cdn.example.com/homebrew/catalog.json');
     log.info('cfg', 'cache /home/owner/share/homebrewCatalog.json');
-    log.info('svc', 'serving the phone UI from /opt/usr/apps/qWn7pLd2Rk/res/wgt/ui/dist');
+    log.info('svc', 'serving the phone UI from /opt/usr/apps/GJBBYNLkgP/res/wgt/ui/dist');
     log.ok('net', 'listening on 0.0.0.0:8091');
     log.info('net', 'reachable at http://192.168.2.9:8091 (eth0)');
     log.ok('svc', 'startup finished in 312ms');
@@ -269,7 +269,7 @@ const conversation = (socket, say) => {
         log.info('relay', `exec ${command.trim()}`);
 
         const answers = {
-            'pkgcmd -l': 'Total 3 packages\npkg [wgt]\tpkgid [qWn7pLd2Rk]\tapp [TizenHomebrew]\n' +
+            'pkgcmd -l': 'Total 3 packages\npkg [wgt]\tpkgid [GJBBYNLkgP]\tapp [TizenHomebrew]\n' +
                          'pkg [wgt]\tpkgid [tUb3Xq7Lm9]\tapp [Tube]\npkg [tpk]\tpkgid [org.tizen.browser]\n',
             'uname -a': 'Linux localhost 4.19.221 #1 SMP PREEMPT armv7l GNU/Linux\n'
         };
@@ -351,7 +351,7 @@ const ROUTES = {
     '/state': () => DEVICE,
     '/health': () => ({ ok: true, port: 8091, onTv: true, addresses: ['192.168.2.9'] }),
     '/version': () => ({ build: 'dev', node: process.version, startedAt: new Date().toISOString(), uptimeSeconds: 1 }),
-    '/packages': () => ({ ok: true, packages: [{ id: 'qWn7pLd2Rk', name: 'Tizen Homebrew', version: '0.1.0' }] }),
+    '/packages': () => ({ ok: true, packages: [{ id: 'GJBBYNLkgP', name: 'Tizen Homebrew', version: '0.1.0' }] }),
     // `uptime` comes with the lines because the page stamps its own events on
     // this service's clock — see the note on /logs in the real one.
     '/logs': (query) => ({

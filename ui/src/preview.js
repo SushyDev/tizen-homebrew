@@ -101,7 +101,7 @@ const history = [
     [4, 'auth', 'info', 'pairing pin 386588 — regenerated every start'],
     [5, 'cat', 'info', 'origin https://cdn.example.com/homebrew/catalog.json'],
     [5, 'cfg', 'info', 'cache /home/owner/share/homebrewCatalog.json'],
-    [6, 'svc', 'info', 'serving the phone UI from /opt/usr/apps/qWn7pLd2Rk/res/wgt/ui/dist'],
+    [6, 'svc', 'info', 'serving the phone UI from /opt/usr/apps/GJBBYNLkgP/res/wgt/ui/dist'],
     [301, 'net', 'ok', 'listening on 0.0.0.0:8091'],
     [302, 'net', 'info', 'reachable at http://192.168.2.9:8091 (eth0)'],
     [312, 'svc', 'ok', 'startup finished in 312ms'],
