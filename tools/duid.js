@@ -9,20 +9,27 @@
 // Studio's sdb, which is a gigabyte of download for one string, so this asks
 // the TV directly over the same vendored ADB client the service uses.
 //
-// Two places claim to know it, and they are not equally trustworthy:
+// The device API on port 8001 also has a field called `duid`, and it is a trap.
+// On the television this was written against it reports
+// `uuid:21f31367-a5a6-4d3d-8078-8dd4d090a334` while the certificate minted for
+// that same set is bound to `CPCLIM2YRW7DO`. Two different identifiers, one
+// misleading name; a certificate minted against the wrong one fails at install
+// with "Check certificate error", which says nothing about why. So that field
+// is not offered here as an answer, or as a guess.
 //
-//   · `shell:0 getduid` over sdb is what the reference implementation feeds to
-//     the certificate creator, so it is the answer.
-//   · the device API on port 8001 reports a `duid` field to anyone who asks,
-//     with no developer mode and no sdb involved.
+// When sdb will not answer — which is the normal state once a TV is pinned to
+// 127.0.0.1 — there is still one honest source left. A Samsung distributor
+// certificate carries the device it was minted for in its subjectAltName:
 //
-// They may well be the same string on every model. They are not *known* to be,
-// and a certificate minted against the wrong identity fails at install with
-// "Check certificate error" — a message that says nothing about why. So this
-// prints the one it can prove, says where it came from, and when it has both
-// it says whether they agreed.
+//   URI:URN:tizen:deviceid=CPCLIM2YRW7DO
+//
+// So the certificate you already have will tell you which television it
+// belongs to, which answers the question that usually prompts this: whether
+// the pair on this machine is the pair for the TV in front of you.
 
 const { networkInterfaces } = require('os');
+const { existsSync, readFileSync } = require('fs');
+const { join } = require('path');
 
 const ui = require('./ui.js');
 const sdb = require('../service/src/tv/sdb.js');
@@ -65,6 +72,47 @@ async function describe(ip) {
     } catch (e) {
         return null;
     }
+}
+
+/**
+ * The device a distributor certificate was minted for.
+ *
+ * Offline, and true whether or not the TV is reachable — but it describes the
+ * certificate, not whatever is at the other end of the network, which is the
+ * whole reason it is reported separately.
+ */
+function boundDevice() {
+    const p12Path = process.env.TIZEN_DISTRIBUTOR_P12 ||
+        join(process.env.HOME || '', '.tizen-certs', 'distributor.p12');
+
+    const password = process.env.TIZEN_DISTRIBUTOR_PW || process.env.TIZEN_AUTHOR_PW;
+
+    if (!password || !existsSync(p12Path)) return null;
+
+    try {
+        const forge = require('node-forge');
+
+        const p12 = forge.pkcs12.pkcs12FromAsn1(
+            forge.asn1.fromDer(readFileSync(p12Path).toString('binary')),
+            password
+        );
+
+        const bags = p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag] || [];
+
+        for (const bag of bags) {
+            const alt = bag.cert && bag.cert.getExtension('subjectAltName');
+
+            for (const name of (alt && alt.altNames) || []) {
+                const match = /deviceid=(.+)$/.exec(name.value || '');
+                if (match) return { device: match[1], path: p12Path };
+            }
+        }
+    } catch (e) {
+        // A wrong password or an unreadable file is not worth failing over:
+        // this is the consolation prize, not the answer.
+    }
+
+    return null;
 }
 
 /** The DUID as sdbd itself reports it, or null when sdbd will not have us. */
@@ -113,15 +161,16 @@ async function main() {
         throw error;
     });
 
+    const bound = boundDevice();
+
     if (measured) {
         ui.ok('duid', measured);
         ui.note(ui.style.dim('  from `getduid` over sdb — the value create-samsung-cert wants'));
 
-        if (reported) {
-            const agrees = reported === measured || reported.replace(/^uuid:/, '') === measured;
-            ui.note(ui.style.dim(agrees
-                ? `  the device API agrees (${reported})`
-                : `  the device API says something else: ${reported}`));
+        if (bound) {
+            ui.note(ui.style.dim(bound.device === measured
+                ? `  the certificate in ${bound.path} is bound to this TV`
+                : `  the certificate in ${bound.path} is bound to ${bound.device}, which is NOT this TV`));
         }
 
         ui.blank();
@@ -138,19 +187,23 @@ async function main() {
     // rather than an answer.
     const mine = localAddressFor(ip);
 
+    ui.warn('sdb would not answer, so this TV was not asked');
+
+    if (bound) {
+        ui.info('duid', bound.device);
+        ui.note(ui.style.dim(`  not from the TV — this is the device ${bound.path} was minted for`));
+    } else if (device) {
+        ui.note(ui.style.dim(`  and no certificate to read one out of either`));
+    }
+
     if (reported) {
-        ui.warn('sdb would not answer, so this is unverified');
-        ui.info('duid?', reported);
-        ui.note(ui.style.dim(`  the device API reports this; \`getduid\` is what mints a working certificate`));
-    } else {
-        throw friendly(
-            `Could not reach sdb on ${ip}, and the device API did not report a duid either.\n\n` +
-            '  Turn Developer Mode on: Apps > 12345 (or hold Enter) > Settings.'
-        );
+        ui.blank();
+        ui.note(ui.style.dim(`  (the device API's "duid" field says ${reported}, which is a different`));
+        ui.note(ui.style.dim('   identifier entirely and is not what a certificate is bound to)'));
     }
 
     ui.blank();
-    ui.note('To confirm it, sdbd has to accept this machine. Either:');
+    ui.note('To ask the television itself, sdbd has to accept this machine. Either:');
     ui.blank();
     ui.note(ui.style.dim(`  · point the TV's Host PC IP at ${mine || 'this machine'} and restart it, then run this again`));
     ui.note(ui.style.dim('  · or run `getduid` through Tizen Homebrew\'s own relay, from the phone UI\'s'));

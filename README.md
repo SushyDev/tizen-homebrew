@@ -212,12 +212,17 @@ npm run duid -- 192.168.2.9
 
 That asks the TV over sdb, which is the value `create-samsung-cert` wants. It
 only answers while the TV's developer host IP still points at this machine —
-once it is pinned to `127.0.0.1` the same question has to go through Tizen
-Homebrew's own relay, from the phone UI's Shell tab. The device API on port
-8001 also reports a `duid` to anyone who asks, and the command prints that too,
-but labelled: the two are not known to be the same string on every model, and a
-certificate minted against the wrong one fails at install with `Check
-certificate error` and no hint as to why.
+once that is pinned to `127.0.0.1`, the same question has to go through Tizen
+Homebrew's own relay, from the phone UI's Shell tab. Failing both, the command
+reads the device out of the distributor certificate you already have, which
+carries it in its `subjectAltName`:
+
+    URI:URN:tizen:deviceid=CPCLIM2YRW7DO
+
+Ignore the `duid` field the device API serves on port 8001. It is a different
+identifier — `uuid:21f31367-…` on the same set that mints `CPCLIM2YRW7DO` — and
+a certificate bound to the wrong one fails at install with `Check certificate
+error` and no hint as to why.
 
 Then mint the pair:
 
