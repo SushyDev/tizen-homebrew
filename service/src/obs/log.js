@@ -163,26 +163,49 @@ const startRecording = (options) => {
         }
     };
 
+    /**
+     * Writes a message to the ring, as one record per line of it.
+     *
+     * dmesg has no multi-line record and neither does this — the header at the
+     * top of this file promises that one record is one line, and every reader
+     * of this log is built on it. A stack trace arrives here as a single
+     * string with newlines in it, and it is the one thing that ever broke that
+     * promise.
+     *
+     * It broke it expensively. The television draws the log as a grid whose
+     * rows it counts to find how many fit, and a record eight lines tall made
+     * that count disagree with itself: nine rows fit when six were drawn, six
+     * fit when nine were. Pressing `show logs` recursed between the two until
+     * the stack ran out. See `fit` in ui/src/tv.js, which no longer trusts the
+     * count to settle either.
+     *
+     * Returns every record it wrote, because the caller prints them.
+     */
     const record = (level, facility, text) => {
-        if (level === 'debug' && !keepDebug) return null;
+        if (level === 'debug' && !keepDebug) return [];
 
-        const line = {
-            seq: ++sequence,
-            t: elapsed(),
-            at: new Date().toISOString(),
-            level,
-            facility,
-            text: text.length > MAX_LINE ? `${text.slice(0, MAX_LINE)}…` : text
-        };
+        // Trailing newlines are punctuation on the message rather than empty
+        // lines somebody meant to write; interior ones are kept, because a
+        // blank line in the middle of a stack trace is in the stack trace.
+        return String(text).replace(/[\r\n]+$/, '').split(/\r?\n/).map((one) => {
+            const line = {
+                seq: ++sequence,
+                t: elapsed(),
+                at: new Date().toISOString(),
+                level,
+                facility,
+                text: one.length > MAX_LINE ? `${one.slice(0, MAX_LINE)}…` : one
+            };
 
-        lines.push(line);
-        while (lines.length > max) lines.shift();
+            lines.push(line);
+            while (lines.length > max) lines.shift();
 
-        return line;
+            return line;
+        });
     };
 
     /**
-     * Writes one line, and prints it.
+     * Writes a message, and prints every line it became.
      *
      * Printing goes through the console function matching the severity, so the
      * platform's own log keeps the distinction too — on a TV that output is
@@ -190,16 +213,19 @@ const startRecording = (options) => {
      */
     const write = (level, facility, values) => {
         try {
-            const line = record(level, facility, values.map(render).join(' '));
-            if (!line) return;
-
-            if (settings.print) return settings.print(format(line), line);
+            const written = record(level, facility, values.map(render).join(' '));
 
             const print = level === 'err' ? SINK.pristine.error
                 : level === 'warn' ? SINK.pristine.warn
                 : SINK.pristine.log;
 
-            print.call(console, format(line));
+            // A message that became several records is printed as several
+            // lines, each stamped and named — so the platform's own log reads
+            // the way the television's does rather than keeping a shape this
+            // one has given up.
+            written.forEach((line) => (settings.print
+                ? settings.print(format(line), line)
+                : print.call(console, format(line))));
         } catch (e) {
             // Logging must never be the reason something fails.
         }
