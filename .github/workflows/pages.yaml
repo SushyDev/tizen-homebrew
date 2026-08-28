@@ -42,7 +42,8 @@ jobs:
       # fetches it, and the failure is silent from the far end — the channel
       # falls back to its cache and says the origin was unreachable.
       - name: Check the catalogue parses
-        run: node -e "
+        run: |
+          node -e "
             const apps = require('./catalog/catalog.json');
             const list = Array.isArray(apps) ? apps : apps.apps;
             if (!Array.isArray(list)) throw new Error('catalog.json must be an array, or an object with an apps array.');
