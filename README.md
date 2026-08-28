@@ -117,18 +117,37 @@ if the certificates on this machine belong to a different set. `npm run mint --
 192.168.2.9 <pin>` does the same and mints a pair for whatever it finds, so
 neither command needs you to know the DUID.
 
-**If you re-mint your certificates**, the next push is refused with `Author
-certificate not match`: Tizen will not update an app across a change of author
-certificate. The installed copy has to be removed first, which needs sdb — so
-point **Host PC IP** back at your computer, restart the TV, and:
+### More than one television
+
+One certificate pair covers as many as you like. Point `mint` at the next set
+and it adds that device to the pair it already has:
+
+```sh
+npm run mint -- 192.168.2.20 <pin>
+```
+
+The **author certificate is kept**, and that matters more than it sounds.
+Tizen refuses to update an app whose author certificate changed —
+
+    install failed[118, -11], reason: Author certificate not match
+
+— and the only way out is to uninstall, which needs sdb, which means walking
+to that television and pointing its developer host IP back at a computer.
+Minting a new author for a new TV would impose that on every set you already
+had. So `mint` only issues a new distributor, listing every device, and leaves
+the author alone.
+
+If you do end up with a mismatched author — `--new-author`, a lost certificate,
+a pair minted elsewhere — that one television needs a single trip: set **Host
+PC IP** back to your computer, restart it, then
 
 ```sh
 npm run bootstrap -- 192.168.2.9 --replace
 ```
 
-Then set it back to `127.0.0.1` and restart again. Tizen Homebrew cannot do
-this one for you: removing itself from a TV pinned to loopback would leave
-nothing able to reach sdbd, which is why its relay refuses the command.
+and set it back to `127.0.0.1`. Tizen Homebrew cannot do this one for you:
+removing itself from a set pinned to loopback would leave nothing able to reach
+sdbd, which is why its relay refuses the command.
 
 ---
 

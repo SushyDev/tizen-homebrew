@@ -4,6 +4,23 @@
 //
 //   npm run mint -- 192.168.2.9 <pin>     asks the TV which device it is
 //   npm run mint -- --duid BDCPQZFMHIZII  when you already know
+//   npm run mint -- <tv-ip> <pin> --new-author   start the pair over
+//
+// A second television does not need a second pair. One distributor
+// certificate can name several devices, and this adds to the list rather than
+// replacing it — so the pair on this machine ends up covering every set you
+// have asked it about.
+//
+// The author certificate is kept. That is the important half: Tizen refuses to
+// *update* an app whose author certificate has changed —
+//
+//     install failed[118, -11], reason: Author certificate not match
+//
+// — and recovering from that means uninstalling, which needs sdb, which means
+// walking to the television and pointing its developer host IP back at a
+// computer. Minting a new author every time you add a TV would impose that on
+// every set you already had. So it happens once, and `--new-author` is the way
+// to say you meant it.
 //
 // Samsung binds a signing certificate to a device id, and issues it only to a
 // signed-in Samsung account. `tizenjs create-samsung-cert` does this too, and
@@ -23,7 +40,7 @@
 // certificate creator directly.
 
 const { createServer } = require('http');
-const { writeFileSync, mkdirSync } = require('fs');
+const { writeFileSync, mkdirSync, existsSync } = require('fs');
 const { join } = require('path');
 
 const ui = require('./ui.js');
@@ -117,7 +134,19 @@ const main = async () => {
         );
     }
 
-    ui.info('device', duid);
+    // Every television this pair already covers, plus the one being added. A
+    // second set costs a distributor certificate, not a new everything.
+    const existing = certificates.locate();
+    const covered = certificates.devicesIn(existing.distributor, existing.distributorPassword);
+
+    const devices = covered.indexOf(duid) === -1 ? covered.concat(duid) : covered;
+
+    // Keeping the author is the default, and the reason is in the header.
+    const keeping = !named('--new-author') && Boolean(existing.password) && existsSync(existing.author) && covered.length > 0;
+
+    ui.info('device', duid + (covered.indexOf(duid) === -1 ? '' : ' (already covered)'));
+    ui.info('covering', devices.join(', '));
+    ui.info('author', keeping ? 'keeping the one on this machine' : 'minting a new one');
     ui.info('privilege', privilege);
     ui.blank();
 
@@ -133,16 +162,37 @@ const main = async () => {
     ui.ok('signed in', account.email || account.userId);
 
     const { SamsungCertificateCreator } = require('tizen');
+    const creator = new SamsungCertificateCreator();
 
     const authorInfo = {
         name: named('--name') || (account.email || 'tizen-homebrew').split('@')[0],
         email: account.email,
-        password,
+        password: keeping ? existing.password : password,
         privilegeLevel: privilege
     };
 
-    const pair = await new SamsungCertificateCreator()
-        .createCertificate(authorInfo, account, [duid])
+    // Only the distributor names devices, and only the distributor is fetched
+    // when an author certificate is being kept. The two are independent: the
+    // distributor carries its own key and its own chain, and Samsung issues it
+    // without reference to the author.
+    const mintDistributor = async () => {
+        await creator._downloadVDCertificates();
+
+        const request = creator._generateDistributorCert(authorInfo, devices);
+
+        // Called twice because createCertificate calls it twice, once for the
+        // profile and once for the certificate. Whether that is deliberate or
+        // a slip in the library, it is what works today.
+        const profile = await creator._fetchDistributorCert(account, authorInfo, request);
+        const issued = await creator._fetchDistributorCert(account, authorInfo, request);
+
+        return {
+            distributorCert: await creator._generateDistributorPKCS12(request, issued, authorInfo),
+            distributorXML: profile
+        };
+    };
+
+    const minted = await (keeping ? mintDistributor() : creator.createCertificate(authorInfo, account, devices))
         .catch((error) => {
             throw friendly(`Samsung refused to issue the certificate:\n\n  ${error.message}`);
         });
@@ -150,17 +200,28 @@ const main = async () => {
     const directory = named('--output') || certificates.DEFAULT_DIR;
 
     mkdirSync(directory, { recursive: true });
-    writeFileSync(join(directory, 'author.p12'), Buffer.from(pair.authorCert, 'binary'));
-    writeFileSync(join(directory, 'distributor.p12'), Buffer.from(pair.distributorCert, 'binary'));
-    writeFileSync(join(directory, 'device-profile.xml'), pair.distributorXML);
-    // Beside the certificates, because everything here looks for it there.
-    writeFileSync(join(directory, 'author.pw'), password);
+    writeFileSync(join(directory, 'distributor.p12'), Buffer.from(minted.distributorCert, 'binary'));
+    writeFileSync(join(directory, 'device-profile.xml'), minted.distributorXML);
+
+    if (!keeping) {
+        writeFileSync(join(directory, 'author.p12'), Buffer.from(minted.authorCert, 'binary'));
+        // Beside the certificates, because everything here looks for it there.
+        writeFileSync(join(directory, 'author.pw'), password);
+    }
 
     ui.ok('written', directory);
     ui.blank();
-    ui.note(`This pair signs only for ${duid}.`);
-    ui.note(ui.style.dim('  npm run package                       build a widget it can install'));
-    ui.note(ui.style.dim(`  npm run certs -- ${ip || '<tv-ip>'} <pin>       let the TV re-sign for itself`));
+
+    ui.note(keeping
+        ? 'The author certificate is unchanged, so televisions already running this keep updating.'
+        : 'A new author certificate. Any television already running this needs `--replace` once:');
+
+    if (!keeping) ui.note(ui.style.dim('  npm run bootstrap -- <tv-ip> --replace   (needs sdb — see the README)'));
+
+    ui.blank();
+    ui.note(`This pair signs for ${devices.length === 1 ? devices[0] : `${devices.length} televisions: ${devices.join(', ')}`}.`);
+    ui.note(ui.style.dim('  npm run package                          build a widget they can install'));
+    ui.note(ui.style.dim(`  npm run certs -- ${ip || '<tv-ip>'} <pin>          let a TV re-sign for itself`));
     ui.blank();
 };
 

@@ -45,6 +45,41 @@ const locate = () => {
     };
 };
 
+/**
+ * Every television a distributor certificate covers.
+ *
+ * One certificate can name several — `--duidList` is a list — and that is what
+ * makes a second TV cost a new distributor rather than a new everything.
+ */
+const devicesIn = (path, password) => {
+    if (!password || !existsSync(path)) return [];
+
+    try {
+        const forge = require('node-forge');
+
+        const p12 = forge.pkcs12.pkcs12FromAsn1(
+            forge.asn1.fromDer(readFileSync(path).toString('binary')),
+            false,
+            password
+        );
+
+        return p12.safeContents
+            .reduce((bags, contents) => bags.concat(contents.safeBags), [])
+            .filter((bag) => bag.type === forge.pki.oids.certBag && bag.cert)
+            .reduce((found, bag) => {
+                const extension = bag.cert.getExtension('subjectAltName');
+
+                return found.concat(((extension && extension.altNames) || [])
+                    .map((name) => /deviceid=(.+)$/.exec(name.value || ''))
+                    .filter(Boolean)
+                    .map((match) => match[1]));
+            }, [])
+            .filter((device, index, all) => all.indexOf(device) === index);
+    } catch (e) {
+        return [];
+    }
+};
+
 /** What is missing, in the order somebody would fix it. */
 const missing = (certificates) => [
     !existsSync(certificates.author) ? `no author certificate at ${certificates.author}` : null,
@@ -59,4 +94,4 @@ const howToMint = (directory) => 'Make a pair bound to your TV — `npm run duid
     `      --duidList <TV-DUID> --output ${directory || DEFAULT_DIR}\n\n` +
     `    echo -n '<password>' > ${join(directory || DEFAULT_DIR, 'author.pw')}`;
 
-module.exports = { locate, missing, howToMint, DEFAULT_DIR };
+module.exports = { locate, missing, devicesIn, howToMint, DEFAULT_DIR };
