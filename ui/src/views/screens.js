@@ -46,7 +46,15 @@ const masthead = (state) => html`
 // The field is dressed as the other half of the code shown on the TV: same
 // recess, same edge, same aqua. You are copying something across a room, and
 // the two ends should look like the same object.
-const pairing = (state) => html`
+//
+// While a remembered code is being offered there is nothing to type, so the
+// field is not shown: putting one up for the half second that takes invites
+// somebody to start typing into a form that is about to be replaced.
+const pairing = (state) => (state.restoring ? html`
+  <div class="state state-warn">
+    <span class="state-head">Pairing</span>
+    <span class="small">Offering the code this phone paired with last.</span>
+  </div>` : html`
   <div class="glass pad stack stack-wide">
     <div class="stack stack-tight">
       <span class="label">Pairing required</span>
@@ -63,7 +71,7 @@ const pairing = (state) => html`
              <span class="small">${state.pinError}</span>
            </div>`
         : ''}
-  </div>`;
+  </div>`);
 
 // ── State ─────────────────────────────────────────────────────────────
 

@@ -42,7 +42,7 @@ const IDENTITY = {
 };
 
 const base = {
-    connection: 'connected', paired: true, pin: '', pinError: null, themeOn: true,
+    connection: 'connected', paired: true, pin: '', pinError: null, restoring: false, themeOn: true,
     device: { onTv: true, ready: true, platformVersion: '6.5' },
     catalog: [
         { id: 'tube', name: 'YouTube', version: '0.1.0', description: 'YouTube without the advertisements', icon: TUBE, source: { type: 'github', ref: 'SushyDev/tube' } },
@@ -62,7 +62,9 @@ const base = {
 
 const scenes = [
     ['Pairing', { ...base, paired: false }],
+    ['Pairing · remembered', { ...base, paired: false, restoring: true }],
     ['Rejected', { ...base, paired: false, pinError: 'That PIN did not match.' }],
+    ['Rejected · remembered', { ...base, paired: false, pinError: 'The TV has restarted, so its PIN has changed.' }],
     ['Ready', base],
     ['Not ready', { ...base, device: { onTv: true, ready: false, reason: 'sdbUnreachable' } }],
     // The three states a chosen file passes through: named by the browser,

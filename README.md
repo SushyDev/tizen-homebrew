@@ -71,7 +71,9 @@ work on it. Done.
 | **Shell** | sdb commands, off by default |
 
 The PIN changes every time the app is opened; the TV screen shows the current
-one. Update Tizen Homebrew itself over the LAN:
+one. Your phone keeps the last one that worked, so reloading the page does not
+ask for it again — until the TV restarts and mints a new one. Update Tizen
+Homebrew itself over the LAN:
 
 ```sh
 npm run package && npm run push -- 192.168.2.9 <pin>
@@ -124,9 +126,11 @@ around, and why step 5 exists: a TV holding its own pair re-signs everything it
 installs, in about 150ms.
 
 **Security.** The install endpoint is open to the network on purpose, so it is
-gated by the 6-digit PIN — regenerated every start, never persisted, and
-readable only over loopback, so a person has to relay it. Five wrong guesses
-locks pairing for five minutes. The sdb relay is a bigger escalation: off by
+gated by the 6-digit PIN — regenerated every start, never written down by the
+TV, and readable only over loopback, so a person has to relay it. The phone
+that paired keeps it in its own browser storage, per TV, and drops it the
+moment the service refuses it. Five wrong guesses locks pairing for five
+minutes. The sdb relay is a bigger escalation: off by
 default, a second opt-in to survive reboots, and it refuses commands that would
 disable it or uninstall the app.
 
