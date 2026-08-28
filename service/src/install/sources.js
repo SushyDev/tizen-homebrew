@@ -60,7 +60,11 @@ const latestRelease = async (repo, log) => {
         if (error.status === 404) {
             throw rejected('notFound', `${repo} has no published releases, or is private.`);
         }
-        throw rejected('downloadFailed', error.message);
+        // The status comes with it. A 403 from this endpoint is the rate
+        // limit — sixty an hour to a caller nobody has signed in as — and
+        // `install/updates.js` stops a run of checks on one rather than
+        // spending the rest of the catalogue on the same refusal.
+        throw Object.assign(rejected('downloadFailed', error.message), { status: error.status });
     }
 };
 

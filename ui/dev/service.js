@@ -108,15 +108,20 @@ const artwork = (letter, top, bottom) => `data:image/svg+xml;base64,${Buffer.fro
     `font-size="36" font-family="Helvetica,Arial,sans-serif">${letter}</text></svg>`
 ).toString('base64')}`;
 
+// Four rows, and between them every state the app list can be in: an app
+// with an update waiting, an app that is here and current, an app that is
+// not here at all, and a `url` app with nothing to ask about.
+//
+// `installed` is on them from the start, because the real service reads that
+// off the television's own package list and it costs nothing. `available` is
+// not: it is a request to GitHub each — see install/updates.js — and it does
+// not arrive until somebody presses check.
 const CATALOG = [
     {
         // The channel itself, which is in its own catalogue so a television
-        // can carry its own next version to itself. No version declared, for
-        // the same reason the real entry declares none: the release is what
-        // moves, and it is asked about rather than written down.
+        // can carry its own next version to itself.
         id: 'homebrew',
         name: 'Tizen Homebrew',
-        version: null,
         description: 'This app. Updates itself.',
         packageId: 'GJBBYNLkgP',
         icon: artwork('H', '#7fe3ff', '#0a5f80'),
@@ -125,7 +130,6 @@ const CATALOG = [
     {
         id: 'tube',
         name: 'YouTube',
-        version: '0.1.0',
         description: 'YouTube without the advertisements',
         icon: artwork('Y', '#ff4d4d', '#9b0000'),
         packageId: 'tUb3Xq7Lm9',
@@ -134,16 +138,16 @@ const CATALOG = [
     {
         id: 'jellyfin',
         name: 'Jellyfin',
-        version: '10.9.1',
         description: 'Your own media server, on the television',
         icon: artwork('J', '#aa5cd6', '#00a4dc'),
+        packageId: 'AprZAcqzcc',
         source: { type: 'github', ref: 'jellyfin/jellyfin-tizen' }
     },
     {
         // Deliberately without artwork. A catalogue logo is guessed rather
         // than declared — logo.png in the app's own repository — so an app
         // that has none is the ordinary case, and the row that falls back to
-        // a monogram needs looking at as much as the two that do not.
+        // a monogram needs looking at as much as the ones that do not.
         id: 'kodi',
         name: 'Kodi',
         version: '21.0',
@@ -152,17 +156,31 @@ const CATALOG = [
     }
 ];
 
-// The same list a moment later.
-//
-// The real service answers `getCatalog` twice: the rows, and then the rows
-// again with what this television is holding marked on them — see
-// install/updates.js, which asks the platform what is installed and GitHub
-// what has been released. One row comes back with an update on it, because
-// the lit "update" button is a state the app list exists to be able to show
-// and there is otherwise no way to look at it without a stale TV to hand.
-const UPDATED = CATALOG.map((app) => (app.id === 'homebrew'
-    ? { ...app, version: '0.2.0', installed: '0.1.0', update: true }
-    : app));
+// What this fake television is holding: the channel, one version behind, and
+// YouTube at the version its repository is already at.
+const INSTALLED = { GJBBYNLkgP: '0.1.0', tUb3Xq7Lm9: '0.1.0' };
+
+// And what those repositories would answer, once anybody asks them.
+const RELEASED = { 'SushyDev/tizen-homebrew': '0.2.0', 'SushyDev/tube': '0.1.0' };
+
+/** The catalogue as the service sends it: installed marked, versions not. */
+const listed = (checked) => CATALOG.map((app) => {
+    const installed = INSTALLED[app.packageId] || null;
+
+    // A url app has nowhere to ask, so what the catalogue declares is the
+    // answer and it is as checked as it will ever be.
+    const asked = app.source.type !== 'github' || checked.indexOf(app.id) !== -1;
+    const available = app.source.type === 'github' ? RELEASED[app.source.ref] || null : app.version || null;
+
+    return {
+        ...app,
+        version: (asked ? available : null) || app.version || null,
+        installed,
+        available: asked ? available : null,
+        checked: asked,
+        update: Boolean(asked && installed && available && available > installed)
+    };
+});
 
 // What the service reads out of a package sitting on the television's own
 // disk — see install/preview.js. The filenames below are what a browser would
@@ -292,6 +310,10 @@ const conversation = (socket, say) => {
     let paired = false;
     let relayEnabled = false;
 
+    // Which rows somebody has asked about. Empty to begin with, which is the
+    // state the app list opens in on a real television too.
+    let checked = [];
+
     const send = (type, payload) => socket.write(frame(JSON.stringify({ type, payload })));
 
     const fail = (code, message, remedy) => send('error', { code, message, remedy: remedy || null, fatal: false });
@@ -324,9 +346,9 @@ const conversation = (socket, say) => {
         // — see install/pipeline.js — and the card that renders it is one of
         // the screens this stand-in exists to make visible.
         const identity = PACKAGES[ref] || (() => {
-            // UPDATED rather than CATALOG: same rows, and the versions are the
-            // ones the phone is showing by the time anything can be pressed.
-            const entry = UPDATED.filter((app) => app.id === ref)[0];
+            // The marked list, so the version is the one the phone is
+            // showing by the time anything can be pressed.
+            const entry = listed(checked).filter((app) => app.id === ref)[0];
 
             return entry
                 ? {
@@ -375,7 +397,7 @@ const conversation = (socket, say) => {
             return fail(refused.code, refused.line, refused.remedy);
         }
 
-        const entry = UPDATED.filter((app) => app.id === ref)[0];
+        const entry = listed(checked).filter((app) => app.id === ref)[0];
 
         log.info('sdb', 'spend time for wgt injection: 4.19 sec');
         log.ok('sdb', 'vd_appinstall finished in 4.21s');
@@ -428,17 +450,36 @@ const conversation = (socket, say) => {
         },
 
         getState: () => send('state', DEVICE),
-        getCatalog: async () => {
-            send('catalog', { entries: CATALOG, stale: false });
+        // Free: what is installed is a local question on a real set, so the
+        // list arrives at once with that much on it and nothing else.
+        getCatalog: () => send('catalog', { entries: listed(checked), stale: false }),
 
-            // Delayed for the same reason the real one is: it is waiting on
-            // GitHub, which is why it is a second message rather than a slower
-            // first one.
-            await new Promise((resolve) => setTimeout(resolve, 900));
-            log.info('cat', 'SushyDev/tizen-homebrew has released 0.2.0');
-            log.ok('cat', 'Tizen Homebrew 0.1.0 is installed and 0.2.0 is out');
+        // Not free: one request to GitHub per app, which is why it waits to
+        // be asked and why the delay below is not padding.
+        checkUpdates: async ({ id }) => {
+            const asking = CATALOG.filter((app) => app.source.type === 'github' && (!id || app.id === id));
 
-            send('catalog', { entries: UPDATED, stale: false });
+            if (!asking.length) return send('catalog', { entries: listed(checked), stale: false });
+
+            log.info('cat', `checking ${asking.length === 1 ? asking[0].name : `${asking.length} apps`} for a newer release`);
+
+            // Three at a time, as the real one does.
+            await new Promise((resolve) => setTimeout(resolve, 400 * Math.ceil(asking.length / 3)));
+
+            asking.forEach((app) => {
+                if (checked.indexOf(app.id) === -1) checked.push(app.id);
+
+                if (RELEASED[app.source.ref]) log.info('cat', `${app.source.ref} has released ${RELEASED[app.source.ref]}`);
+                else log.warn('cat', `could not ask github about ${app.source.ref}: ` +
+                    `${app.source.ref} has no published releases, or is private.`);
+            });
+
+            const marked = listed(checked);
+
+            marked.filter((app) => app.update).forEach((app) =>
+                log.ok('cat', `${app.name} ${app.installed} is installed and ${app.available} is out`));
+
+            send('catalog', { entries: marked, stale: false });
         },
         listDir: ({ path }) => send('dir', DIRECTORY[path] || DIRECTORY['/media']),
         install,
@@ -487,7 +528,7 @@ const ROUTES = {
     '/state': () => DEVICE,
     '/health': () => ({ ok: true, port: 8091, onTv: true, addresses: ['192.168.2.9'] }),
     '/version': () => ({ build: 'dev', node: process.version, startedAt: new Date().toISOString(), uptimeSeconds: 1 }),
-    '/packages': () => ({ ok: true, packages: [{ id: 'GJBBYNLkgP', name: 'Tizen Homebrew', version: '0.1.0' }] }),
+    '/packages': () => ({ ok: true, packages: Object.keys(INSTALLED).map((id) => ({ id, version: INSTALLED[id] })) }),
     // `uptime` comes with the lines because the page stamps its own events on
     // this service's clock — see the note on /logs in the real one.
     '/logs': (query) => ({

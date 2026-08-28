@@ -1,29 +1,40 @@
 'use strict';
 
-// What the television already has, and whether anything newer has been
-// released since it got it.
+// What the television already has, and what the catalogue could give it.
 //
-// A catalogue row can say "install" without knowing anything at all. Saying
-// "update" takes two facts it does not have: which version of the app is on
-// this set, and which version the app is at now. The first comes from the
-// platform's own package list; the second comes from GitHub, because a version
-// written into the catalogue is a statement somebody has to keep true by hand
-// and the release is the thing that actually moves. Tizen Homebrew is in its
-// own catalogue for exactly this reason — a set carries its own next version
-// to itself, and hand-editing a JSON file is not a mechanism that survives.
+// Two questions, and they cost wildly different amounts to answer.
 //
-// It costs one request per *installed* catalogue app, and none at all for the
-// rest: an app you do not have cannot have an update, so a fresh television
-// asks GitHub nothing. Answers are remembered for six hours and negative ones
-// are remembered too — a repository with no releases answers 404 just as often
-// as a busy one answers 200, and the unauthenticated budget is sixty an hour.
+// *What is installed* comes from the platform's own package list: one local
+// call, no network, and the answer covers every app at once. So it is asked
+// every time the catalogue is sent, and every row knows immediately whether
+// it is already on this set and at which version.
+//
+// *What has been released* is one HTTP request per app, to a GitHub API that
+// allows an unauthenticated caller sixty an hour. On a catalogue of five apps
+// that is nothing; on a catalogue of two hundred it is a rate limit and a long
+// wait, for a list somebody opened to look at. So it is never done on the way
+// to drawing the screen. It happens when somebody asks — one row, or all of
+// them — and the answers are remembered for six hours.
+//
+// The split is the whole design: the free half is automatic and the expensive
+// half is a button.
 
 const sources = require('./sources.js');
 const versions = require('./versions.js');
 
 const CACHE_TTL = 6 * 60 * 60 * 1000;
 
+// How many releases to ask about at once.
+//
+// Not a throughput dial. Three keeps a check on a large catalogue from opening
+// two hundred sockets from a television, and keeps the ordering of the log
+// readable while it happens.
+const AT_ONCE = 3;
+
 const quiet = { info: () => {}, ok: () => {}, warn: () => {}, err: () => {}, debug: () => {} };
+
+/** Whether there is anywhere to ask about an entry's released version. */
+const askable = (entry) => entry.source.type === 'github';
 
 /**
  * Builds the update check.
@@ -37,10 +48,20 @@ const quiet = { info: () => {}, ok: () => {}, warn: () => {}, err: () => {}, deb
 const createUpdates = ({ packages, log, latestRelease = sources.latestRelease }) => {
     const say = log ? log.on('cat') : quiet;
 
-    // repo -> { version, at }. In memory rather than on disk: the service
-    // outlives a reinstall of the app but not a restart of the set, and the
-    // cost of being wrong here is one request.
+    // repo -> { version, at }. Present means asked; a null version means asked
+    // and told nothing useful, which is a different thing from never asked and
+    // is remembered just as hard — a repository with no releases answers 404
+    // as often as a busy one answers 200.
+    //
+    // In memory rather than on disk: the service outlives a reinstall of the
+    // app but not a restart of the set, and the cost of forgetting is one
+    // request.
     const remembered = {};
+
+    const fresh = (repo) => {
+        const known = remembered[repo];
+        return known && Date.now() - known.at < CACHE_TTL ? known : null;
+    };
 
     /** Package id -> the version of it this television is holding. */
     const installedNow = async () => {
@@ -54,7 +75,7 @@ const createUpdates = ({ packages, log, latestRelease = sources.latestRelease })
         } catch (error) {
             // Off a television nothing is installed and there is nothing to
             // say about it — that is the development harness, not a fault. A
-            // set that would not answer is worth a line, and costs the update
+            // set that would not answer is worth a line, and costs the version
             // marks and nothing else.
             if (error.code !== 'notOnTv') say.warn(`could not list what is installed: ${error.message}`);
 
@@ -62,20 +83,42 @@ const createUpdates = ({ packages, log, latestRelease = sources.latestRelease })
         }
     };
 
-    /** What an entry's app is at now, as far as anything can be asked. */
-    const published = async (entry, refresh) => {
-        // Nobody to ask about a `url` app, so what the catalogue declares is
-        // the only answer there is — and it is the fallback for a `github` one
-        // whose origin did not answer.
-        if (entry.source.type !== 'github') return entry.version;
+    /**
+     * The catalogue with everything free written on it.
+     *
+     * Each entry gains `installed` — the version on this set, or null — and,
+     * where it has already been asked about, `available` and `update`.
+     * `checked` says whether `available` is an answer or an absence: a row
+     * that has not been asked about yet and one whose app has no releases look
+     * identical without it, and they mean different things to whoever is
+     * looking at the button.
+     */
+    const mark = async (entries) => {
+        const installed = await installedNow();
 
-        const repo = entry.source.ref;
-        const known = remembered[repo];
+        return entries.map((entry) => {
+            const current = entry.packageId ? installed[entry.packageId] || null : null;
 
-        if (!refresh && known && Date.now() - known.at < CACHE_TTL) {
-            return known.version || entry.version;
-        }
+            // Nothing to ask about a `url` app, so what the catalogue declares
+            // is the answer and it is as checked as it will ever be.
+            const known = askable(entry) ? fresh(entry.source.ref) : { version: entry.version };
+            const available = known ? known.version : null;
 
+            return {
+                ...entry,
+                // The version somebody would get, where that is known at all —
+                // which is what the row shows beside the name.
+                version: available || entry.version,
+                installed: current,
+                available,
+                checked: Boolean(known),
+                update: versions.isNewer(available, current)
+            };
+        });
+    };
+
+    /** One release lookup, remembered whichever way it goes. */
+    const ask = async (repo) => {
         const found = await (async () => {
             try {
                 const release = await latestRelease(repo);
@@ -87,65 +130,68 @@ const createUpdates = ({ packages, log, latestRelease = sources.latestRelease })
                 return version;
             } catch (error) {
                 say.warn(`could not ask github about ${repo}: ${error.message}`);
+
+                // A television that has spent its hour is not going to do
+                // better on the next forty repositories, and hammering the
+                // limit is how it stays spent. The caller stops.
+                if (error.status === 403 || error.status === 429) throw error;
+
                 return null;
             }
         })();
 
         remembered[repo] = { version: found, at: Date.now() };
-
-        return found || entry.version;
     };
 
     /**
-     * The catalogue, with what is installed marked on it.
+     * Asks about released versions — the expensive half, and only on request.
      *
-     * Returns null — rather than the list unchanged — when there was nothing
-     * to learn, so a caller can tell "asked, and nothing is installed" from
-     * "here is a second answer worth sending".
-     *
-     * Each entry that is installed gains `installed`, the version on this set;
-     * `version`, the one on offer; and `update`, which is the whole point and
-     * is decided here rather than on the phone so there is one comparator
-     * rather than two.
+     * `id` names one entry, which is re-asked whether or not the answer is
+     * already in hand: somebody pressing check on a row they can see means
+     * "now", not "if you have not already". Without an id every entry that has
+     * not been asked about recently is checked, a few at a time, and the run
+     * stops early if GitHub starts refusing — the rest of the catalogue would
+     * only be refused too.
      */
-    const mark = async (entries, { refresh = false } = {}) => {
-        const installed = await installedNow();
+    const check = async (entries, { id = null } = {}) => {
+        const wanted = entries.filter((entry) => askable(entry) &&
+            (id ? entry.id === id : !fresh(entry.source.ref)));
 
-        // An app this television does not have cannot have an update, and
-        // finding that out is free — so the requests below are only ever spent
-        // on rows that could actually change.
-        const held = entries.filter((entry) => entry.packageId && installed[entry.packageId]);
+        if (!wanted.length) return mark(entries);
 
-        if (!held.length) return null;
+        say.info(`checking ${wanted.length === 1 ? wanted[0].name : `${wanted.length} apps`} for a newer release`);
 
-        const offered = {};
+        const queue = wanted.slice();
+        let stopped = null;
 
-        await Promise.all(held.map(async (entry) => {
-            offered[entry.id] = await published(entry, refresh);
-        }));
+        const worker = async () => {
+            while (queue.length && !stopped) {
+                const entry = queue.shift();
 
-        const marked = entries.map((entry) => {
-            const current = entry.packageId ? installed[entry.packageId] : null;
+                try {
+                    await ask(entry.source.ref);
+                } catch (error) {
+                    stopped = error;
+                }
+            }
+        };
 
-            if (!current) return entry;
+        await Promise.all(new Array(Math.min(AT_ONCE, queue.length)).fill(null).map(worker));
 
-            const available = offered[entry.id] || entry.version;
+        if (stopped) {
+            say.warn(`stopped checking: github refused (${stopped.message}). ` +
+                'It allows sixty requests an hour to a television nobody has signed in from.');
+        }
 
-            return {
-                ...entry,
-                version: available,
-                installed: current,
-                update: versions.isNewer(available, current)
-            };
-        });
+        const marked = await mark(entries);
 
         marked.filter((entry) => entry.update).forEach((entry) => say.ok(
-            `${entry.name} ${entry.installed} is installed and ${entry.version} is out`));
+            `${entry.name} ${entry.installed} is installed and ${entry.available} is out`));
 
         return marked;
     };
 
-    return { mark };
+    return { mark, check };
 };
 
-module.exports = { createUpdates, CACHE_TTL };
+module.exports = { createUpdates, CACHE_TTL, AT_ONCE };

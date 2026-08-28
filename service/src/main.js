@@ -69,6 +69,7 @@ const start = () => {
     const store = createStore({
         installing: false,
         catalog: [],
+        catalogStale: false,
         lockout: pin.fresh(),
         device: null
     });

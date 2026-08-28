@@ -22,6 +22,7 @@ const Send = {
     hello: 'hello',
     state: 'getState',
     catalog: 'getCatalog',
+    checkUpdates: 'checkUpdates',
     install: 'install',
     listDir: 'listDir',
     setRelay: 'setRelay',
@@ -85,6 +86,12 @@ const store = createStore({
     device: null,
     catalog: [],
     catalogStale: false,
+
+    // Which release lookup is in flight: one app's id, 'all', or nothing.
+    // Asking what an app has released costs a request to GitHub each — see
+    // install/updates.js — so it happens on a press rather than on the way to
+    // drawing the list, and the press has to look like it did something.
+    checking: null,
 
     tab: 'catalog',
     github: '',
@@ -196,7 +203,9 @@ const { send } = connect({
 
             state: () => ({ device: payload }),
 
-            catalog: () => ({ catalog: payload.entries || [], catalogStale: !!payload.stale }),
+            // Every catalogue answers a check as well as a fetch, so this is
+            // also where a check finishes.
+            catalog: () => ({ catalog: payload.entries || [], catalogStale: !!payload.stale, checking: null }),
 
             dir: () => ({ usb: payload }),
 
@@ -243,6 +252,10 @@ const { send } = connect({
                     phase: null,
                     relayBusy: false,
                     uploading: null,
+                    // A refused check must not leave every button on the app
+                    // list disabled for good. Whatever this was, nothing is in
+                    // flight after it.
+                    checking: null,
                     error: {
                         title: EXPLANATIONS[payload.code] || 'Failed.',
                         detail: payload.message || '',
@@ -319,6 +332,20 @@ delegate({
     },
 
     'catalog:refresh': () => send(Send.catalog, { refresh: true }),
+
+    // The whole list, and one row of it. Both answer with a catalogue, which
+    // is what clears `checking` above.
+    checkAll: () => {
+        if (store.get().checking) return;
+        store.update({ checking: 'all' });
+        send(Send.checkUpdates, {});
+    },
+
+    check: (_element, id) => {
+        if (store.get().checking) return;
+        store.update({ checking: id });
+        send(Send.checkUpdates, { id });
+    },
 
     'install:github': () => value('gh') && beginInstall('github', value('gh')),
     'install:url': () => value('url') && beginInstall('url', value('url')),

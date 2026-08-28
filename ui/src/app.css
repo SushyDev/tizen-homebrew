@@ -401,6 +401,16 @@ p { margin: 0; }
   gap: 0.5rem;
 }
 
+/* Controls that belong together: the quiet one that fetches a fact and the
+   loud one that acts on it, at the end of a row or under a list. */
+.controls {
+  display: grid;
+  grid-auto-flow: column;
+  justify-content: start;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 /* An input with its button. */
 .entry {
   display: grid;
@@ -916,6 +926,18 @@ p { margin: 0; }
 
 .btn-wide  { width: 100%; }
 .btn-start { justify-self: start; }
+
+/* Size belongs to the place, not to the paint.
+
+   `.btn-ghost` used to carry both — the quiet treatment and the 40px a
+   control in a list wants — so the first lit button to appear in one, an
+   `update` beside a column of `install`s, stood eight pixels taller than its
+   neighbours and made the row it was in look broken. A row is a column of
+   controls that have to line up whatever any of them is saying. */
+.list .row .btn {
+  min-height: 40px;
+  padding: 0 0.875rem;
+}
 
 /* Focused, a signal button gets brighter rather than turning steel — it is
    already the loud one, and swapping its hue would read as a different

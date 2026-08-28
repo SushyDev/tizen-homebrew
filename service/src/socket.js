@@ -128,22 +128,32 @@ const attach = ({ server, store, authorise, installer, catalog, updates, relay, 
 
         const listCatalog = async ({ refresh }) => {
             const result = await catalog.fetch({ refresh: !!refresh });
-            store.update({ catalog: result.entries });
-            send(Outbound.CATALOG, result);
 
-            // And then again, once it is known which of those apps this
-            // television already has and whether any of them have moved on
-            // since. That costs a request to GitHub per installed app, which
-            // is not allowed to hold up the list: the rows arrive, and the
-            // ones with an update to offer say so a moment later.
+            store.update({ catalog: result.entries, catalogStale: result.stale });
+
+            // Marked with what this television already has, which is a local
+            // question and free — see install/updates.js. What has been
+            // *released* is not free, so nothing here asks: the list draws
+            // immediately, and `checkUpdates` fills the versions in when
+            // somebody asks for them.
             //
-            // The stored catalogue is left as it was. What `sources.resolve`
+            // The stored catalogue is left unmarked. What `sources.resolve`
             // needs from an entry is its id and its source, and neither is
             // touched here — an install started from an "update" row is the
             // same install as one started from any other.
-            const marked = await updates.mark(result.entries, { refresh: !!refresh });
+            send(Outbound.CATALOG, { ...result, entries: await updates.mark(result.entries) });
+        };
 
-            if (marked) send(Outbound.CATALOG, { ...result, entries: marked });
+        // The expensive half, on request: one app where an id is given, and
+        // everything not asked about recently where it is not.
+        const checkUpdates = async ({ id }) => {
+            const entries = store.select('catalog') || [];
+
+            send(Outbound.CATALOG, {
+                entries: await updates.check(entries, { id: id || null }),
+                stale: Boolean(store.select('catalogStale')),
+                source: 'cache'
+            });
         };
 
         // Which app, from where, on whose behalf. The pipeline reports every
@@ -276,6 +286,7 @@ const attach = ({ server, store, authorise, installer, catalog, updates, relay, 
             [Inbound.HELLO]: greet,
             [Inbound.GET_STATE]: sendDeviceState,
             [Inbound.GET_CATALOG]: listCatalog,
+            [Inbound.CHECK_UPDATES]: checkUpdates,
             [Inbound.INSTALL]: runInstall,
             [Inbound.LIST_DIR]: listDirectory,
             [Inbound.SET_RELAY]: setRelay,
