@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="https://tizenhomebrew.local" version="0.1.0" viewmodes="maximized">
+    <access origin="*" subdomains="true"></access>
+    <tizen:application id="qWn7pLd2Rk.TizenHomebrew" package="qWn7pLd2Rk" required_version="3.0"/>
+    <author>Tizen Homebrew</author>
+    <content src="ui/dist/tv.html"/>
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+    <feature name="http://tizen.org/feature/web.service"/>
+    <icon src="icon.png"/>
+    <name>Tizen Homebrew</name>
+
+    <!-- internet + network.public: reach the catalog origin and GitHub.
+         productinfo: read the platform version and device identity.
+         application.launch: start the background service from the UI page. -->
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/productinfo"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+    <tizen:privilege name="http://tizen.org/privilege/unlimitedstorage"/>
+    <!-- Listing installed packages. packagemanager.install would allow
+         removing them too, but it needs a platform-level certificate and the
+         TV rejects the package outright with MISMATCHED_PRIVILEGE_LEVEL. -->
+    <tizen:privilege name="http://tizen.org/privilege/packagemanager.info"/>
+
+    <tizen:profile name="tv-samsung"/>
+
+    <!-- The headless half: serves the phone UI and drives SDB over loopback.
+         The id suffix must match what tv.html launches. -->
+    <tizen:service id="qWn7pLd2Rk.TizenHomebrewService">
+        <tizen:content src="service/dist/index.js"/>
+        <tizen:name>TizenHomebrewService</tizen:name>
+        <tizen:description>Serves the Tizen Homebrew UI and installs packages over loopback SDB.</tizen:description>
+    </tizen:service>
+
+    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="enable" encryption="disable" install-location="auto" hwkey-event="enable"/>
+</widget>

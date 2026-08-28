@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0d4059">
+<meta name="color-scheme" content="dark">
+<title>Tizen Homebrew</title>
+</head>
+<body class="tv">
+  <!-- The log console and the credits, which take the screen over when they
+       are open. It sits *before* the screen because app.css hides the screen
+       with an adjacent-sibling rule while this section has anything in it —
+       see "Over the screen" there. -->
+  <section id="overlay"></section>
+
+  <main class="screen">
+    <header id="masthead"></header>
+    <section id="connect"></section>
+    <section id="status"></section>
+    <section id="log"></section>
+    <footer id="deck"></footer>
+  </main>
+  <script type="module" src="/src/tv.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "tizen-homebrew-service",
+  "version": "0.1.0",
+  "description": "On-TV install service: serves the phone UI and drives the TV's own SDB daemon.",
+  "main": "src/main.js",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "build": "node build.js",
+    "start": "node src/main.js",
+    "test": "node test/run.js && node test/relay.js && node test/lockout.js && node test/pipeline.js && node test/log.js",
+    "check": "node check-syntax.js dist/index.js"
+  },
+  "dependencies": {
+    "adbhost": "^0.0.2",
+    "ws": "^3.3.3"
+  },
+  "devDependencies": {
+    "acorn": "^8.14.0",
+    "rolldown": "^1.2.6"
+  }
+}

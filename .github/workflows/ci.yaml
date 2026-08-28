@@ -1,0 +1,40 @@
+# Everything that can be checked without a television.
+#
+# The build is here for one reason above the others: `ui/build.js` reads its own
+# output back and refuses CSS a Tizen webview would silently drop, and that
+# check is worth nothing if it only runs on the machine of whoever remembers.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Doctor
+        run: npm run doctor
+
+      - name: Versions agree
+        run: npm run version:check
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
