@@ -117,6 +117,19 @@ if the certificates on this machine belong to a different set. `npm run mint --
 192.168.2.9 <pin>` does the same and mints a pair for whatever it finds, so
 neither command needs you to know the DUID.
 
+**If you re-mint your certificates**, the next push is refused with `Author
+certificate not match`: Tizen will not update an app across a change of author
+certificate. The installed copy has to be removed first, which needs sdb — so
+point **Host PC IP** back at your computer, restart the TV, and:
+
+```sh
+npm run bootstrap -- 192.168.2.9 --replace
+```
+
+Then set it back to `127.0.0.1` and restart again. Tizen Homebrew cannot do
+this one for you: removing itself from a TV pinned to loopback would leave
+nothing able to reach sdbd, which is why its relay refuses the command.
+
 ---
 
 ## Re-signing

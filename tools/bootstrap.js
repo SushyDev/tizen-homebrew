@@ -3,9 +3,20 @@
 // One-time bootstrap: installs Tizen Homebrew onto the TV from this machine.
 //
 //   npm run bootstrap -- 192.168.2.9
+//   npm run bootstrap -- 192.168.2.9 --replace
 //
 // Installs Tizen Homebrew and nothing else. Every other app is meant to come
 // from Tizen Homebrew itself, on the phone.
+//
+// `--replace` removes what is already installed before installing. Tizen
+// refuses to update an app whose *author* certificate has changed —
+// "install failed[118, -11], reason: Author certificate not match" — and a
+// certificate changes every time a pair is re-minted. Removing the app first
+// is the only way through that, and it cannot be done from the television's
+// own relay: taking Tizen Homebrew off a set that is pinned to 127.0.0.1
+// leaves nothing that can reach sdbd, which is why relay.js refuses it. Here
+// it is safe, because getting this far means sdbd is already answering this
+// machine.
 //
 // This is the only step that ever needs a computer. It exists because the TV
 // cannot install its first app by itself, and because Tizen Studio's `sdb` is
@@ -191,7 +202,8 @@ function probe(ip) {
 }
 
 async function main() {
-    const ip = process.argv[2];
+    const replace = process.argv.indexOf('--replace') !== -1;
+    const ip = process.argv.slice(2).filter((argument) => argument[0] !== '-')[0];
     if (!ip) {
         throw friendly('Which TV?\n\n  npm run bootstrap -- <tv-ip>\n\n  Find it in the TV\'s network settings, or check your router.');
     }
@@ -239,6 +251,19 @@ async function main() {
     });
 
     try {
+        if (replace) {
+            const removing = Date.now();
+
+            // Nothing is checked afterwards: an app that was not installed
+            // reports failure here and that is the outcome asked for.
+            await session.exec(`shell:0 vd_appuninstall ${packageId(MANIFEST)}`, {
+                timeout: 120000,
+                until: (out) => out.indexOf('spend time') !== -1 || out.indexOf('uninstall failed') !== -1
+            }).catch(() => null);
+
+            ui.ok('removed', 'the previously installed copy', Date.now() - removing);
+        }
+
         const file = join(ROOT, WGT);
         const buffer = readFileSync(file);
         const remote = `${STAGING_DIR}/homebrew.wgt`;
@@ -260,6 +285,16 @@ async function main() {
         });
 
         const failure = output.split('\n').filter((line) => line.indexOf('install failed') !== -1)[0];
+
+        if (failure && /Author certificate not match/i.test(failure)) {
+            throw friendly(
+                `The TV refused the package.\n\n  ${failure.trim()}\n\n` +
+                '  The copy already installed was signed by a different author certificate,\n' +
+                '  and Tizen will not update across that. Remove it and install fresh:\n\n' +
+                `    npm run bootstrap -- ${ip} --replace`
+            );
+        }
+
         if (failure) throw friendly(`The TV refused the package.\n\n  ${failure.trim()}`);
 
         // Absence of an error is not proof of success: this firmware returns
