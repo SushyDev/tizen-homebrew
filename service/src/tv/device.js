@@ -39,14 +39,24 @@ const platformVersion = () => {
  *
  * This is the exact capability every install depends on, so it is the only
  * thing worth calling "ready".
+ *
+ * The DUID is read on the way past. It costs one command on a connection that
+ * is being opened anyway, and it is what says whether the certificates stored
+ * for re-signing belong to this television or to somebody else's — a question
+ * whose wrong answer looks exactly like a working install until the moment the
+ * TV refuses the package.
  */
 const canReachSdb = async () => {
     try {
         const session = await sdb.connect({ timeout: 4000 });
+
+        const duid = await session.getDuid().catch(() => null);
+
         session.close();
-        return { reachable: true, error: null };
+
+        return { reachable: true, error: null, duid };
     } catch (error) {
-        return { reachable: false, error: error.code || 'unknown' };
+        return { reachable: false, error: error.code || 'unknown', duid: null };
     }
 };
 
@@ -76,6 +86,7 @@ const probe = async () => {
         needsResign: major !== null && major >= RESIGN_REQUIRED_FROM,
         developerMode: null,
         deviceIp: null,
+        duid: null,
         sdbReachable: false,
         sdbError: null,
         ready: false,
@@ -104,6 +115,7 @@ const probe = async () => {
     return {
         ...base,
         ...reported,
+        duid: sdbState.duid,
         sdbReachable: sdbState.reachable,
         sdbError: sdbState.error,
         ready: sdbState.reachable,

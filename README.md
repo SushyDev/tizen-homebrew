@@ -39,6 +39,7 @@ first — it checks every prerequisite and says what to do about each one.
 | `npm run package` | Build, then sign `release/tizenhomebrew.wgt`. Needs certificates. |
 | `npm run bootstrap -- <tv-ip>` | First install onto a TV, over sdb. Needed once. |
 | `npm run duid -- <tv-ip>` | The TV's DUID, which is what a certificate is bound to. |
+| `npm run certs -- <tv-ip> <pin>` | Send this machine's certificate pair to the TV, so it can re-sign. |
 | `npm run push -- <tv-ip> <pin>` | Install over the LAN, through Tizen Homebrew itself. |
 | `npm run dev` | Both screens in a browser, live, with no hardware. |
 | `npm run dev:service` | Run the service off-TV on `:8091`. |
@@ -66,14 +67,42 @@ is read from the output (`spend time`) rather than from the stream ending.
 Tizen 3 has no SDB path available to a service, but is privileged enough to
 call `wascmd` and to write the developer settings directly through `buxton2ctl`.
 
-### Tizen 7 and newer
+### Re-signing, and why every install goes through it
 
-Newer firmwares reject the author signature baked into a public release, so a
-package must be re-signed against certificates Samsung mints for this specific
-TV, keyed to the DUID read via `shell:0 getduid`. Certificates are cached in
-`/home/owner/share/homebrewConfig.json` and reused; if the TV ever rejects
-them, they are cleared automatically so the next attempt re-mints rather than
-failing the same way forever.
+A Tizen package names the device it may be installed on. Its distributor
+certificate carries the binding in plain sight:
+
+    URI:URN:tizen:deviceid=CPCLIM2YRW7DO
+
+From Tizen 7 the television enforces it, so a package signed by whoever built
+it installs on their set and nowhere else — which is the single reason a
+channel cannot simply hand out `.wgt` files. Tizen Homebrew answers by
+re-signing what it installs, for the TV it is running on:
+
+```sh
+npm run duid  -- 192.168.2.9          # which device is this?
+npx tizenjs create-samsung-cert --privilege Public \
+  --name <you> --email <you@example.com> --password <password> \
+  --duidList <TV-DUID> --output ~/.tizen-certs
+npm run certs -- 192.168.2.9 <pin>    # send the pair to the TV
+```
+
+After that the TV holds the pair in `/home/owner/share/homebrewConfig.json`
+and **every** install is re-signed — not only on the firmwares that insist.
+Below Tizen 7 the difference is between installing "packages this one
+developer signed" and installing packages: an unsigned build, or one signed
+for somebody else's television, is refused just the same, and re-signing costs
+about 150ms.
+
+The certificates are opened and read before they are stored, so a pair that
+cannot be used is refused while somebody is still looking, and the device it
+names is taken from the certificate rather than believed. If the TV ever
+rejects them at install, they are cleared automatically so the next attempt
+starts clean rather than failing the same way forever. Nothing reads them back
+out: a client can learn that certificates exist and which device they are for,
+and nothing it could sign with.
+
+`npm run certs -- <tv-ip> <pin> --forget` removes them.
 
 ## Security
 

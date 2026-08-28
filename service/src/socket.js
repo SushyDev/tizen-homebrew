@@ -212,9 +212,15 @@ const attach = ({ server, store, authorise, installer, catalog, relay, refreshDe
             }
         };
 
+        // Minting a pair needs a Samsung account, and signing into one from a
+        // television remote is not a thing anybody should be asked to do. So
+        // the pair is made on a computer, once, and sent here — see
+        // `npm run certs` and POST /certificates. Re-signing itself is on the
+        // TV, which is the half that matters.
         const createCertificates = () => sendFailure(ProtocolError(
             ErrorCode.RESIGN_FAILED,
-            'Re-signing is fetched from the origin on demand, and no origin is configured yet.'
+            'Certificates are minted on a computer and sent to this TV with `npm run certs`. ' +
+            'Signing into a Samsung account from here is not supported.'
         ));
 
         const forgetCertificates = async () => {

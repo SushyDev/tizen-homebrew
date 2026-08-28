@@ -37,7 +37,7 @@ const protocol = require('./protocol.js');
 const { createInstaller } = require('./install/pipeline.js');
 const { createCatalog } = require('./install/catalog.js');
 
-const { ErrorCode, ProtocolError } = protocol;
+const { ErrorCode } = protocol;
 
 // 8080 is already taken on Samsung TVs by a system service, which answers with
 // `Server: WebServer`. Binding there fails with EADDRINUSE and the app simply
@@ -95,15 +95,17 @@ const start = () => {
     // not: it is arbitrary command execution as the TV's developer user.
     if (relay.enabled) log.on(Facility.RELAY).warn('the command relay is ON from stored configuration');
 
-    // Resigning is not shipped: node-forge and jszip together outweighed
-    // everything else in this package, and only Tizen 7+ ever needs them. It
-    // is fetched and digest-checked on first use instead — which adds no new
-    // failure mode, since resigning already requires the network to reach
-    // Samsung's certificate backend.
+    // Re-signing, bound to whatever certificates this television is holding.
+    //
+    // Loaded on first use rather than at startup: it pulls in node-forge, jszip
+    // and an XML canonicaliser, and a TV that never installs anything should
+    // not pay to parse them. The certificates are read at the same moment for
+    // the same reason a session is — so a pair sent to the TV a second ago is
+    // the pair that signs the next install, with nothing to invalidate.
     const resigner = async () => {
-        throw ProtocolError(ErrorCode.RESIGN_FAILED,
-            `Re-signing is fetched from ${ORIGIN} on demand, and nothing is published there yet. ` +
-            'This TV runs Tizen 7 or newer, which will not accept a package signed by anyone else.');
+        const { resign } = require('./install/resign.js');
+
+        return (archive) => resign(archive, config.read());
     };
 
     const installer = createInstaller({ sdb, device, config, resigner, store, log });
@@ -301,6 +303,84 @@ const start = () => {
             // The phases show how far it got, which is usually the useful part.
             log.on(Facility.PKG).err(`upload install stopped after: ${phases.join(', ') || 'nothing'}`);
         }
+    });
+
+    // The certificate pair this television signs with.
+    //
+    // Sent here once, over the PIN, and kept in the same place as everything
+    // else that has to survive a reinstall. There is no route that reads them
+    // back: a client can learn that certificates exist and which device they
+    // are for, which is everything it needs to render a state, and nothing it
+    // could sign with.
+    router.on.post('/certificates', async (request, response) => {
+        const verdict = authorise(request.headers['x-homebrew-pin']);
+        if (!verdict.ok) return failure(response, verdict.code === ErrorCode.LOCKED_OUT ? 429 : 403, verdict.code, verdict.message);
+
+        const sent = await readBody(request, 4 * 1024 * 1024);
+
+        const pair = (() => {
+            try {
+                return JSON.parse(sent.toString('utf8'));
+            } catch (e) {
+                return null;
+            }
+        })();
+
+        const missing = ['authorCert', 'distributorCert', 'password']
+            .filter((field) => typeof (pair || {})[field] !== 'string' || !pair[field]);
+
+        if (missing.length) {
+            return failure(response, 400, ErrorCode.BAD_MESSAGE,
+                `A certificate pair needs ${missing.join(', ')}.`);
+        }
+
+        // Opened before it is stored, so a pair that cannot be used is refused
+        // now rather than at the end of somebody's next install — and so the
+        // device it names is read off the certificate itself rather than
+        // believed from whoever sent it.
+        const { deviceOf, openPair } = require('./install/resign.js');
+
+        const opened = (() => {
+            try {
+                return openPair(pair);
+            } catch (error) {
+                return { error };
+            }
+        })();
+
+        if (opened.error) {
+            return failure(response, 400, ErrorCode.RESIGN_FAILED, opened.error.message);
+        }
+
+        const device = deviceOf(opened.distributor);
+        const state = store.select('device');
+        const here = state && state.duid;
+
+        config.update({
+            authorCert: pair.authorCert,
+            distributorCert: pair.distributorCert,
+            password: pair.password,
+            certDuid: device,
+            certCreatedAt: new Date().toISOString()
+        });
+
+        const mismatched = Boolean(device && here && device !== here);
+
+        log.on(Facility.CFG)[mismatched ? 'warn' : 'ok'](
+            `certificates stored for ${device || 'an unnamed device'}` +
+            (mismatched ? `, but this television is ${here} — installs will be refused` : ''));
+
+        json(response, { ok: true, device, matchesThisTv: !mismatched });
+    });
+
+    router.on.delete('/certificates', (request, response) => {
+        const verdict = authorise(request.headers['x-homebrew-pin']);
+        if (!verdict.ok) return failure(response, 403, verdict.code, verdict.message);
+
+        config.forgetCertificates();
+        log.on(Facility.CFG).info('certificates forgotten');
+
+        json(response, { ok: true });
     });
 
     // Exits so the platform starts the service again on newly installed code.

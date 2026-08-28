@@ -49,6 +49,12 @@ const fakeSdb = (output = 'coreinstall spend time = 1234 ms') => ({
     })
 });
 
+// Holding certificates means every install is re-signed, so most of these
+// need a resigner that behaves rather than one that refuses to be called.
+const fakeResigner = () => Promise.resolve(async (archive) => ({
+    archive, device: 'TESTSET', files: 1
+}));
+
 const fakeDevice = (state = {}) => ({
     probe: () => Promise.resolve({
         onTv: true, ready: true, needsResign: false, reason: null, ...state
@@ -130,13 +136,54 @@ const run = async () => {
         const config = fakeConfig({ authorCert: 'present' });
         const { install } = createInstaller({
             sdb: fakeSdb('Check certificate error : :Check config.xml'),
-            device: fakeDevice(), config, resigner: () => {}, store
+            device: fakeDevice(), config, resigner: fakeResigner, store
         });
 
         const refused = await install({ source: 'upload', upload: realPackage }).catch((e) => e);
         check('a rejected certificate is dropped, not kept',
             refused.code === 'certRejected' && config.hasCertificates() === false,
             `${refused.code} / certs still held: ${config.hasCertificates()}`);
+    }
+
+    // --- certificates mean re-signing, whatever the firmware says --------
+    {
+        const phases = [];
+        const store = createStore({ installing: false, catalog: [] });
+        const signed = [];
+
+        const { install } = createInstaller({
+            sdb: fakeSdb(),
+            // needsResign false: an older television, which would accept the
+            // package as it came.
+            device: fakeDevice({ needsResign: false, duid: 'TESTSET' }),
+            config: fakeConfig({ authorCert: 'present' }),
+            resigner: () => Promise.resolve(async (archive) => {
+                signed.push(archive.length);
+                return { archive, device: 'TESTSET', files: 3 };
+            }),
+            store
+        });
+
+        await install({ source: 'upload', upload: realPackage }, (phase) => phases.push(phase));
+
+        check('a package is re-signed even where the TV would not insist',
+            signed.length === 1 && phases.indexOf('resigning') !== -1, phases.join(' → '));
+    }
+
+    // --- and without them, an older television still installs -------------
+    {
+        const phases = [];
+        const store = createStore({ installing: false, catalog: [] });
+
+        const { install } = createInstaller({
+            sdb: fakeSdb(), device: fakeDevice({ needsResign: false }), config: fakeConfig(),
+            resigner: () => Promise.reject(new Error('should not be needed')), store
+        });
+
+        await install({ source: 'upload', upload: realPackage }, (phase) => phases.push(phase));
+
+        check('with no certificates it installs the package as it came',
+            phases.indexOf('resigning') === -1, phases.join(' → '));
     }
 
     installer.stage = realStage;

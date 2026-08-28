@@ -101,24 +101,37 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
             return { ...carried, archive, name };
         };
 
+        // Re-signed whenever there is a certificate to do it with, not only
+        // when the television insists.
+        //
+        // From Tizen 7 the set checks that the distributor certificate was
+        // minted for it, so re-signing is the only way anything installs at
+        // all. Below that it is merely the difference between "packages this
+        // particular developer signed" and "packages" — an unsigned build, or
+        // one signed for somebody else's TV, is refused just the same, and a
+        // signature this television already trusts costs 150ms to apply.
         const resignIfRequired = async (carried) => {
-            if (!carried.state.needsResign) return carried;
+            const stored = config.hasCertificates(carried.state.duid);
 
-            if (!config.hasCertificates()) {
+            if (!stored) {
+                if (!carried.state.needsResign) {
+                    say.info('no certificates stored — installing the package as it came');
+                    return carried;
+                }
+
                 throw refuse('certsMissing',
-                    'This TV runs Tizen 7 or newer, so packages must be re-signed. Sign in with a Samsung account first.');
+                    'This TV runs Tizen 7 or newer, so packages must be re-signed for it. ' +
+                    'Send it a certificate pair first — see `npm run certs`.');
             }
 
             report('resigning');
-            say.info('tizen 7 or newer — re-signing against this TV\'s own certificates');
 
-            // The resigning code is not in this package — it is fetched and
-            // digest-checked on first use, because node-forge and jszip
-            // together outweighed everything else Tizen Homebrew ships and only
-            // Tizen 7+ ever needs them.
             const resign = await resigner();
+            const { archive, device, files } = await resign(carried.archive);
 
-            return { ...carried, archive: await resign(carried.archive) };
+            say.ok(`re-signed ${files} files for ${device || 'this television'}`);
+
+            return { ...carried, archive };
         };
 
         const readIdentity = (carried) => {
