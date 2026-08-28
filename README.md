@@ -42,7 +42,9 @@ Samsung binds a signing certificate to one television, identified by its DUID:
 npm run duid -- 192.168.2.9
 ```
 
-Use the DUID it prints:
+Use the DUID it prints — a pair minted for a different set uploads fine and is
+then refused with `Check certificate error`, which names neither the
+certificate nor the device:
 
 ```sh
 npx tizenjs create-samsung-cert --privilege Public \
@@ -110,6 +112,10 @@ everyone:
 ```sh
 npm run package && npm run push -- 192.168.2.9 <pin>
 ```
+
+`npm run duid -- 192.168.2.9 <pin>` asks the television through Tizen Homebrew
+itself, which works with developer mode pinned to loopback — and says outright
+if the certificates on this machine belong to a different set.
 
 ---
 

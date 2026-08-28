@@ -33,6 +33,7 @@
   },
   "devDependencies": {
     "eslint": "^10.9.1",
-    "tizen": "https://github.com/reisxd/tizen.js/tarball/main"
+    "tizen": "https://github.com/reisxd/tizen.js/tarball/main",
+    "ws": "^8.21.3"
   }
 }

@@ -3,6 +3,7 @@
 // The TV's DUID, which is the one thing you cannot mint a certificate without.
 //
 //   npm run duid -- 192.168.2.9
+//   npm run duid -- 192.168.2.9 <pin>     through Tizen Homebrew, once it is on
 //
 // Samsung binds a certificate to a specific television, and `create-samsung-cert
 // --duidList` is where that identity goes. Getting it normally means Tizen
@@ -17,22 +18,29 @@
 // with "Check certificate error", which says nothing about why. So that field
 // is not offered here as an answer, or as a guess.
 //
-// When sdb will not answer — which is the normal state once a TV is pinned to
-// 127.0.0.1 — there is still one honest source left. A Samsung distributor
-// certificate carries the device it was minted for in its subjectAltName:
+// Once a TV is pinned to 127.0.0.1 — the point of this whole project — sdbd
+// stops answering laptops, and the question has to go through the one process
+// still allowed to reach it: Tizen Homebrew itself. Give this the PIN from the
+// TV screen and it asks over the relay, which is as authoritative as asking
+// sdb directly because it *is* asking sdb directly, from the other side.
 //
-//   URI:URN:tizen:deviceid=CPCLIM2YRW7DO
+// Failing both there is one offline source. A Samsung distributor certificate
+// carries the device it was minted for in its subjectAltName:
 //
-// So the certificate you already have will tell you which television it
-// belongs to, which answers the question that usually prompts this: whether
-// the pair on this machine is the pair for the TV in front of you.
+//   URI:URN:tizen:deviceid=BDCPQZFMHIZII
+//
+// That describes the certificate rather than the television, which is a
+// different question — and the difference is not academic. A pair minted for
+// the wrong set produces packages that build, sign, upload and are then
+// refused by the TV with "Check certificate error", which names neither the
+// certificate nor the device.
 
 const { networkInterfaces } = require('os');
 const { existsSync, readFileSync } = require('fs');
-const { join } = require('path');
 
 const ui = require('./ui.js');
 const sdb = require('../service/src/tv/sdb.js');
+const certificates = require('./certificates.js');
 
 const DEVICE_API_PORT = 8001;
 
@@ -82,10 +90,7 @@ async function describe(ip) {
  * whole reason it is reported separately.
  */
 function boundDevice() {
-    const p12Path = process.env.TIZEN_DISTRIBUTOR_P12 ||
-        join(process.env.HOME || '', '.tizen-certs', 'distributor.p12');
-
-    const password = process.env.TIZEN_DISTRIBUTOR_PW || process.env.TIZEN_AUTHOR_PW;
+    const { distributor: p12Path, distributorPassword: password } = certificates.locate();
 
     if (!password || !existsSync(p12Path)) return null;
 
@@ -126,13 +131,84 @@ async function ask(ip) {
     }
 }
 
+/**
+ * The same question, relayed through Tizen Homebrew on the television.
+ *
+ * The relay is off by default and this turns it on to ask, then puts it back
+ * the way it found it. That is a real escalation to perform on somebody's
+ * behalf, so it happens only when a PIN was given — which is a person reading
+ * a code off the screen and typing it here.
+ */
+function relay(ip, pin) {
+    const WebSocket = require('ws');
+
+    return new Promise((resolve, reject) => {
+        const socket = new WebSocket(`ws://${ip}:8091`);
+        const send = (type, payload) => socket.send(JSON.stringify({ type, payload: payload || {} }));
+
+        const finish = (error, value) => {
+            try {
+                socket.close();
+            } catch (e) { /* already gone */ }
+
+            if (error) reject(error); else resolve(value);
+        };
+
+        const deadline = setTimeout(() => finish(friendly(`Tizen Homebrew did not answer on ${ip}:8091.`)), 25000);
+
+        let greeted = false;
+        let wasEnabled = false;
+
+        socket.on('message', (raw) => {
+            const { type, payload } = JSON.parse(raw);
+
+            if (type === 'hello' && !greeted) {
+                greeted = true;
+                return send('hello', { pin });
+            }
+
+            if (type === 'hello' && !payload.ok) {
+                clearTimeout(deadline);
+                return finish(friendly('That PIN was refused. It changes every time the service starts — check the TV screen.'));
+            }
+
+            // The relay state arrives unasked on pairing, which is how its
+            // previous setting is known and can be restored afterwards.
+            if (type === 'relayState' && !payload.enabled && !wasEnabled) return send('setRelay', { enabled: true });
+            if (type === 'relayState' && payload.enabled) {
+                wasEnabled = true;
+                return send('relayExec', { id: 'duid', command: 'getduid' });
+            }
+
+            if (type === 'relayEnd') {
+                clearTimeout(deadline);
+                send('setRelay', { enabled: false });
+                return setTimeout(() => finish(null, String(payload.output || '').trim() || null), 400);
+            }
+
+            if (type === 'error') {
+                clearTimeout(deadline);
+                return finish(friendly(`Tizen Homebrew refused: ${payload.message}`));
+            }
+        });
+
+        socket.on('error', (error) => {
+            clearTimeout(deadline);
+            finish(friendly(`Could not reach Tizen Homebrew at ${ip}:8091 — ${error.message}\n\n` +
+                '  Open Tizen Homebrew on the TV; the service only runs while it is open.'));
+        });
+    });
+}
+
 async function main() {
-    const ip = process.argv.slice(2).filter((argument) => argument[0] !== '-')[0];
+    const [ip, pin] = process.argv.slice(2).filter((argument) => argument[0] !== '-');
 
     if (!ip) {
         throw friendly(
-            'Which TV?\n\n  npm run duid -- <tv-ip>\n\n' +
-            '  Find it in the TV\'s network settings, or check your router.'
+            'Which TV?\n\n  npm run duid -- <tv-ip> [pin]\n\n' +
+            '  Find the address in the TV\'s network settings, or check your router.\n' +
+            '  The PIN is on the TV screen once Tizen Homebrew is installed, and lets\n' +
+            '  this ask the television even with developer mode pinned to loopback.'
         );
     }
 
@@ -152,7 +228,11 @@ async function main() {
 
     const reported = device && device.duid ? String(device.duid) : null;
 
-    const measured = await ask(ip).catch((error) => {
+    // Through the channel first when there is a PIN for it: it works in the
+    // state a set actually lives in, where sdb does not.
+    const relayed = pin ? await relay(ip, pin) : null;
+
+    const measured = relayed || await ask(ip).catch((error) => {
         // sdbd accepts the socket from any address and only then drops it if
         // the developer host IP is not ours. Once a TV has been pinned to
         // 127.0.0.1 — which is the whole point of this project — that is the
@@ -165,12 +245,21 @@ async function main() {
 
     if (measured) {
         ui.ok('duid', measured);
-        ui.note(ui.style.dim('  from `getduid` over sdb — the value create-samsung-cert wants'));
+        ui.note(ui.style.dim(relayed
+            ? '  from `getduid`, relayed through Tizen Homebrew — the value create-samsung-cert wants'
+            : '  from `getduid` over sdb — the value create-samsung-cert wants'));
+
+        if (bound && bound.device === measured) {
+            ui.note(ui.style.dim(`  the certificate in ${bound.path} is bound to this TV`));
+            ui.blank();
+            return;
+        }
 
         if (bound) {
-            ui.note(ui.style.dim(bound.device === measured
-                ? `  the certificate in ${bound.path} is bound to this TV`
-                : `  the certificate in ${bound.path} is bound to ${bound.device}, which is NOT this TV`));
+            ui.blank();
+            ui.warn(`the certificate in ${bound.path} is bound to ${bound.device}, which is NOT this television`);
+            ui.note(ui.style.dim('  packages signed with it upload fine and are then refused with'));
+            ui.note(ui.style.dim('  "Check certificate error", which names neither the certificate nor the device'));
         }
 
         ui.blank();

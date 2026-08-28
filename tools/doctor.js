@@ -4,7 +4,7 @@
 // missing. Run this first when something is wrong.
 
 const { existsSync, statSync } = require('fs');
-const { join, dirname } = require('path');
+const { join } = require('path');
 
 const ui = require('./ui.js');
 const { load, CONFIG_PATH, ROOT } = require('./config.js');
