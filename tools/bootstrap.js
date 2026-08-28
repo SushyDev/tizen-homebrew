@@ -35,6 +35,7 @@ const { ROOT } = require('./config.js');
 const certificates = require('./certificates.js');
 const { localAddressFor } = require('./tv.js');
 const sdb = require('../service/src/tv/sdb.js');
+const verdicts = require('../service/src/install/verdicts.js');
 
 // Where packages are staged on the TV before vd_appinstall reads them. This is
 // the directory the Tizen installer expects to find sideloaded packages in.
@@ -295,21 +296,29 @@ async function main() {
 
         const output = await session.exec(`shell:0 vd_appinstall ${packageId(MANIFEST)} ${remote}`, {
             timeout: 180000,
-            until: (out) => out.indexOf('spend time') !== -1 || out.indexOf('install failed') !== -1
+            until: verdicts.settled
         });
 
-        const failure = output.split('\n').filter((line) => line.indexOf('install failed') !== -1)[0];
+        // One reading of what the television said, shared with the service —
+        // see service/src/install/verdicts.js. This used to keep its own copy,
+        // and the two had drifted into explaining the same refusal differently
+        // depending on which end of the wire you were standing at.
+        //
+        // `failureIn` rather than `interpret`, because a verdict is all this
+        // wants: no output at all is not a failure here, for the reason the
+        // registry check below spells out.
+        const failure = verdicts.failureIn(output, {
+            packageId: packageId(MANIFEST),
+            replaceWith: `npm run bootstrap -- ${ip} --replace`
+        });
 
-        if (failure && /Author certificate not match/i.test(failure)) {
-            throw friendly(
-                `The TV refused the package.\n\n  ${failure.trim()}\n\n` +
-                '  The copy already installed was signed by a different author certificate,\n' +
-                '  and Tizen will not update across that. Remove it and install fresh:\n\n' +
-                `    npm run bootstrap -- ${ip} --replace`
-            );
+        if (failure) {
+            const advice = failure.remedy
+                ? `\n\n  ${failure.remedy.split('\n').join('\n  ')}`
+                : '';
+
+            throw friendly(`The TV refused the package.\n\n  ${failure.line}${advice}`);
         }
-
-        if (failure) throw friendly(`The TV refused the package.\n\n  ${failure.trim()}`);
 
         // Absence of an error is not proof of success: this firmware returns
         // no output at all for shell commands, so the check above would pass

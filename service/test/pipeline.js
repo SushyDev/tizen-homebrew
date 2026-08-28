@@ -81,9 +81,13 @@ const run = async () => {
         const phases = [];
         const store = createStore({ installing: false, catalog: [] });
 
+        // Certificates, because there is no install without them any more:
+        // every package is signed with this television's own pair before it
+        // reaches the installer, whatever the firmware and whatever it came
+        // signed with.
         const { install } = createInstaller({
-            sdb: fakeSdb(), device: fakeDevice(), config: fakeConfig(),
-            resigner: () => Promise.reject(new Error('should not be needed')), store
+            sdb: fakeSdb(), device: fakeDevice(), config: fakeConfig({ authorCert: 'present' }),
+            resigner: fakeResigner, store
         });
 
         const outcome = await install(
@@ -94,7 +98,7 @@ const run = async () => {
         check('an upload installs end to end',
             outcome.packageId === 'GJBBYNLkgP', JSON.stringify(outcome));
         check('the steps run in order',
-            phases.join(' → ') === 'probing → fetching → staging → installing', phases.join(' → '));
+            phases.join(' → ') === 'probing → fetching → resigning → staging → installing', phases.join(' → '));
         check('the store is released afterwards', store.select('installing') === false, 'still marked installing');
     }
 
@@ -134,7 +138,7 @@ const run = async () => {
         });
 
         const refused = await install({ source: 'upload', upload: realPackage }).catch((e) => e);
-        check('resigning without certificates is refused', refused.code === 'certsMissing', String(refused.code));
+        check('a Tizen 7 set without certificates is refused', refused.code === 'certsMissing', String(refused.code));
     }
 
     // --- a rejected certificate is discarded ------------------------------
@@ -160,8 +164,8 @@ const run = async () => {
 
         const { install } = createInstaller({
             sdb: fakeSdb(),
-            // needsResign false: an older television, which would accept the
-            // package as it came.
+            // needsResign false: an older television, which does not check the
+            // distributor certificate and is re-signed for anyway.
             device: fakeDevice({ needsResign: false, duid: 'TESTSET' }),
             config: fakeConfig({ authorCert: 'present' }),
             resigner: () => Promise.resolve(async (archive) => {
@@ -177,7 +181,11 @@ const run = async () => {
             signed.length === 1 && phases.indexOf('resigning') !== -1, phases.join(' → '));
     }
 
-    // --- and without them, an older television still installs -------------
+    // --- and without them, nothing installs at all ------------------------
+    //
+    // An older television used to take the package exactly as it came, which
+    // meant the one thing on the set this machine had not signed. It failed at
+    // the far end, minutes later, naming a certificate nobody here chose.
     {
         const phases = [];
         const store = createStore({ installing: false, catalog: [] });
@@ -187,10 +195,14 @@ const run = async () => {
             resigner: () => Promise.reject(new Error('should not be needed')), store
         });
 
-        await install({ source: 'upload', upload: realPackage }, (phase) => phases.push(phase));
+        const refused = await install({ source: 'upload', upload: realPackage },
+            (phase) => phases.push(phase)).catch((e) => e);
 
-        check('with no certificates it installs the package as it came',
-            phases.indexOf('resigning') === -1, phases.join(' → '));
+        check('no certificates is refused on any firmware, not just Tizen 7',
+            refused.code === 'certsMissing', String(refused.code));
+
+        check('and nothing unsigned by us reaches the installer',
+            phases.indexOf('installing') === -1, phases.join(' → '));
     }
 
     installer.stage = realStage;

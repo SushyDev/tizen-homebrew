@@ -16,6 +16,13 @@
 
 import { createHash } from 'crypto';
 
+// The real table of what a television says about a package it will not
+// install. A stand-in that invented its own failures would be exactly the
+// wrong kind of mock: the shape the UI has to render — code, verdict, remedy —
+// is the thing being looked at here, so it comes from the same place the
+// service gets it.
+import verdicts from '../../service/src/install/verdicts.js';
+
 // The pairing code the fake TV is showing. Fixed rather than random, because
 // the point is to get to the interface quickly and often.
 const PIN = '386588';
@@ -212,7 +219,7 @@ const conversation = (socket, say) => {
 
     const send = (type, payload) => socket.write(frame(JSON.stringify({ type, payload })));
 
-    const fail = (code, message) => send('error', { code, message, fatal: false });
+    const fail = (code, message, remedy) => send('error', { code, message, remedy: remedy || null, fatal: false });
 
     /** Walks one install through its phases, then succeeds or refuses. */
     const install = async ({ source, ref }) => {
@@ -244,10 +251,20 @@ const conversation = (socket, say) => {
         }
 
         // One source always refuses, because the failure states need looking
-        // at as much as the happy one does.
+        // at as much as the happy one does. An author mismatch, specifically:
+        // it is the refusal people actually hit, and the only one with all
+        // three lines to render.
         if (String(ref).indexOf('fail') !== -1) {
-            log.err('pkg', `install failed after ${((Date.now() - began) / 1000).toFixed(2)}s: installFailed — app install failed[118, -14]`);
-            return fail('installFailed', 'app install failed[118, -14]');
+            const refused = verdicts.failureIn(
+                'app_id[tUb3Xq7Lm9] install failed[118, -11], reason: Author certificate not match :',
+                { packageId: 'tUb3Xq7Lm9' }
+            );
+
+            log.err('pkg', `install failed after ${((Date.now() - began) / 1000).toFixed(2)}s: ` +
+                `${refused.code} — ${refused.line}`);
+            refused.remedy.split('\n').forEach((line) => log.warn('pkg', line));
+
+            return fail(refused.code, refused.line, refused.remedy);
         }
 
         const entry = CATALOG.filter((app) => app.id === ref)[0];

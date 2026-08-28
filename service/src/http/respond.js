@@ -24,9 +24,15 @@ const json = (response, value, status = 200) => {
  * Sends an error in the shape every client already expects: `{ ok, code,
  * message }`. Keeping one shape means the UI never has to guess whether a
  * failure came from the socket or from HTTP.
+ *
+ * `remedy` is the sentence saying what to do about it, and only the install
+ * verdicts carry one — see install/verdicts.js. It is left out of the body
+ * entirely when there is none, so every other reply keeps the shape it had.
  */
-const failure = (response, status, code, message) =>
-    json(response, { ok: false, code, message }, status);
+const failure = (response, status, code, message, remedy) =>
+    json(response, remedy
+        ? { ok: false, code, message, remedy }
+        : { ok: false, code, message }, status);
 
 /** Sends a file's bytes, with the content type the caller worked out. */
 const bytes = (response, buffer, contentType) => {

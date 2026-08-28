@@ -27,7 +27,7 @@ const Outbound = {
     CATALOG: 'catalog',             // [CatalogEntry]
     PROGRESS: 'progress',           // { phase, detail? }
     DONE: 'done',                   // { packageId, appId }
-    ERROR: 'error',                 // { code, message, fatal }
+    ERROR: 'error',                 // { code, message, remedy?, fatal }
     DIR: 'dir',                     // [{ name, path, isDirectory }]
     NEEDS_CERTS: 'needsCerts',      // { ip }
     RELAY_STATE: 'relayState',      // { enabled }
@@ -46,6 +46,15 @@ const Phase = {
 };
 
 // Error codes are stable identifiers; the UI maps them to translated strings.
+//
+// Every code the service can throw belongs here, including the ones only the
+// install sequence produces. `sdbUnreachable` did not, for a while: pipeline.js
+// threw it, the UI had a string ready for it, and the one list that was
+// supposed to be the register of them all did not know it existed.
+//
+// The install verdicts below the line are decided in one place —
+// install/verdicts.js — which is also where the sentence explaining each one
+// to a person lives. This end of it is only the name.
 const ErrorCode = {
     BAD_MESSAGE: 'badMessage',
     UNAUTHORIZED: 'unauthorized',
@@ -53,16 +62,23 @@ const ErrorCode = {
     DEBUG_IP_WRONG: 'debugIpWrong',
     SDB_REFUSED: 'sdbRefused',
     SDB_TIMEOUT: 'sdbTimeout',
+    SDB_UNREACHABLE: 'sdbUnreachable',
     NOT_FOUND: 'notFound',
     DOWNLOAD_FAILED: 'downloadFailed',
     BAD_PACKAGE: 'badPackage',
     CERTS_MISSING: 'certsMissing',
     RESIGN_FAILED: 'resignFailed',
-    INSTALL_FAILED: 'installFailed',
-    CERT_REJECTED: 'certRejected',
     RELAY_DISABLED: 'relayDisabled',
     LOCKED_OUT: 'lockedOut',
-    INTERNAL: 'internal'
+    INTERNAL: 'internal',
+
+    // What a television says about a package it will not install.
+    INSTALL_FAILED: 'installFailed',
+    CERT_REJECTED: 'certRejected',
+    AUTHOR_MISMATCH: 'authorMismatch',
+    CERT_CHAIN_INVALID: 'certChainInvalid',
+    SECURITY_ERROR: 'securityError',
+    PRIVILEGE_TOO_HIGH: 'privilegeTooHigh'
 };
 
 function ProtocolError(code, message) {

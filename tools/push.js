@@ -149,9 +149,17 @@ async function pushOne(ip, pin, buildBefore) {
     if (!res.ok || !result.ok) {
         // The phases show how far it got, which is usually the useful part.
         const trace = (result.phases || []).map((p) => `      ${p}`).join('\n');
+
+        // And where the television gave a refusal the service recognised, the
+        // sentence saying what to do about it — decided once, on the TV, in
+        // service/src/install/verdicts.js, so this reads the same as the phone.
+        const advice = result.remedy
+            ? `\n  ${result.remedy.split('\n').join('\n  ')}\n`
+            : '';
+
         throw friendly(
             `The install failed: ${result.message || res.status}\n` +
-            (trace ? `\n${trace}\n` : '')
+            (trace ? `\n${trace}\n` : '') + advice
         );
     }
 

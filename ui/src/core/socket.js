@@ -92,7 +92,7 @@ const upload = ({ file, pin, onProgress }) => new Promise((resolve, reject) => {
 
         reject(Object.assign(
             new Error((body && body.message) || `HTTP ${request.status}`),
-            { code: body && body.code }
+            { code: body && body.code, remedy: (body && body.remedy) || null }
         ));
     };
 

@@ -39,7 +39,16 @@ const scenes = [
     ['Upload', { ...base, tab: 'upload', file: { name: 'TizenHomebrew.wgt', size: 57344 } }],
     ['Installing', { ...base, phase: 'installing', phaseDetail: 'YouTube' }],
     ['Installed', { ...base, done: { name: 'YouTube', packageId: 'tUb3Xq7Lm9', version: '0.1.0' } }],
-    ['Failed', { ...base, error: { title: 'The TV rejected the install.', detail: 'app install failed[118, -14]' } }],
+    // Three lines: what went wrong, what the television said, what to do. The
+    // last is the one worth looking at — it wraps to four on a phone, and the
+    // point of previewing it is that it has to stay readable there.
+    ['Failed', { ...base, error: {
+        title: 'A different build of this app is already installed.',
+        detail: 'app_id[tUb3Xq7Lm9] install failed[118, -11], reason: Author certificate not match :',
+        remedy: 'A copy signed by somebody else is already installed, and Tizen will not update ' +
+            'across a changed author. Remove tUb3Xq7Lm9 from the TV\'s Apps menu — or run ' +
+            '`vd_appuninstall tUb3Xq7Lm9` in the shell tab — then install again.'
+    } }],
     ['Storage', { ...base, tab: 'usb' }],
     ['Shell', { ...base, tab: 'relay' }]
 ];
