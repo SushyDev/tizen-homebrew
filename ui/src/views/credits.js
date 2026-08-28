@@ -26,12 +26,6 @@ const CREDITS = [
     { name: 'TizenBrew Installer', by: 'reisxd', at: 'github.com/reisxd/TizenBrewInstaller' },
     { name: 'tizen.js', by: 'reisxd', at: 'github.com/reisxd/tizen.js' },
 
-    { head: 'Services tube talks to' },
-    { name: 'SponsorBlock', by: 'Ajay Ramachandran', at: 'github.com/ajayyy/SponsorBlock' },
-    { name: 'DeArrow', by: 'Ajay Ramachandran', at: 'github.com/ajayyy/DeArrow' },
-    { name: 'uBlock Origin and uAssets', by: 'Raymond Hill', at: 'github.com/gorhill/uBlock' },
-    { note: 'The scriptlet the ad filter is derived from.' },
-
     { head: 'Artwork and sound' },
     { name: 'The Homebrew Channel', by: 'fail0verflow', at: 'github.com/fail0verflow/hbc' },
     { note: 'The sea, the rays, the bubbles, the glass and the banner music are all its own.' },
