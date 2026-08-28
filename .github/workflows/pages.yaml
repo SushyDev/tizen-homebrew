@@ -1,0 +1,64 @@
+# Publishes the app catalogue to GitHub Pages.
+#
+# The channel fetches this list at runtime and caches it on disk, so adding an
+# app is a commit to catalog/ — no rebuild, and nothing to reinstall on a TV.
+# That is the whole reason the catalogue is a URL rather than a compiled-in
+# list.
+#
+# Needs Pages turned on once: Settings → Pages → Source: GitHub Actions.
+
+name: Catalogue
+
+on:
+  push:
+    branches: [main]
+    paths: ['catalog/**', '.github/workflows/pages.yaml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A queued run waits for the one in flight rather than cancelling it: this
+# publishes state, and the last write has to be the newest commit.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish the catalogue
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Malformed JSON here empties the app list on every television that
+      # fetches it, and the failure is silent from the far end — the channel
+      # falls back to its cache and says the origin was unreachable.
+      - name: Check the catalogue parses
+        run: node -e "
+            const apps = require('./catalog/catalog.json');
+            const list = Array.isArray(apps) ? apps : apps.apps;
+            if (!Array.isArray(list)) throw new Error('catalog.json must be an array, or an object with an apps array.');
+            list.forEach((entry, index) => {
+              const named = entry && typeof entry.id === 'string' && typeof entry.name === 'string';
+              const sourced = entry && entry.source && ['github', 'url'].includes(entry.source.type) && typeof entry.source.ref === 'string';
+              if (!named || !sourced) throw new Error('Entry ' + index + ' is not a usable catalogue entry.');
+            });
+            console.log(list.length + ' apps');
+          "
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: catalog
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

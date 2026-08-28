@@ -102,8 +102,8 @@ const start = () => {
     // Samsung's certificate backend.
     const resigner = async () => {
         throw ProtocolError(ErrorCode.RESIGN_FAILED,
-            `Re-signing is fetched from ${ORIGIN} on demand, and no origin is configured yet. ` +
-            'Set tube.origin in tizen.config.json and rebuild.');
+            `Re-signing is fetched from ${ORIGIN} on demand, and nothing is published there yet. ` +
+            'This TV runs Tizen 7 or newer, which will not accept a package signed by anyone else.');
     };
 
     const installer = createInstaller({ sdb, device, config, resigner, store, log });

@@ -190,7 +190,7 @@ Set these once, in **Settings → Secrets and variables → Actions**:
 | Secret | `TIZEN_AUTHOR_PW` | its password |
 | Secret | `TIZEN_DISTRIBUTOR_P12` | base64 of `distributor.p12` |
 | Secret | `TIZEN_DISTRIBUTOR_PW` | its password, if it differs from the author's |
-| Variable | `HOMEBREW_CATALOG_URL` | where the channel fetches its app list |
+| Variable | `HOMEBREW_CATALOG_URL` | optional — overrides the catalogue origin baked in from `tizen.config.json` |
 
 Tag and version have to agree: the workflow refuses a release tagged `v1.2.0`
 whose `tizen.config.json` says something else, because it is the second number
@@ -356,25 +356,33 @@ listen port.
 
 ## The catalogue
 
-`tizen.config.json` names the origin, and it is baked into the package at build
-time so a running TV never depends on an environment variable being set:
+The list of apps lives in `catalog/` and is published to GitHub Pages by
+`.github/workflows/pages.yaml`, which is where the default origin points:
 
 ```json
 {
   "version": "0.1.0",
-  "catalogUrl": "https://apps.example.com/catalog.json"
+  "catalogUrl": "https://sushydev.github.io/tizen-homebrew/catalog.json"
 }
 ```
 
-`HOMEBREW_CATALOG_URL` overrides it for CI and one-off builds. The example host
-is fine while developing — `npm run build` warns and carries on — but
-`npm run package -- --release` refuses it outright, because the URL is baked
-into every TV that installs the package and shipping a placeholder produces an
-app whose app list is permanently empty.
+That is deliberate. The URL is baked into the package at build time, so a
+running TV never depends on an environment variable being set — and changing it
+afterwards would otherwise mean reinstalling every television that has this on
+it. Adding an *app*, though, is only a commit to `catalog/`: no rebuild, no
+reinstall, and a TV picks it up the next time somebody opens the app list.
 
-A TV that is already out there can be repointed without a reinstall: set
-`catalogUrl` in `/home/owner/share/homebrewConfig.json` and it wins over the
-built-in origin. The log says which one is in use at startup.
+Pages has to be turned on once, in **Settings → Pages → Source: GitHub
+Actions**. Until then the URL 404s, the channel says the origin was unreachable
+and falls back to its cached list, which on a fresh install is empty.
+
+`HOMEBREW_CATALOG_URL` overrides the origin for CI and one-off builds, and
+`npm run package -- --release` refuses the example hosts in
+`tools/config.js` outright — shipping one produces an app whose list is
+permanently empty. A television already in the wild can be repointed without a
+reinstall by setting `catalogUrl` in `/home/owner/share/homebrewConfig.json`,
+which wins over the built-in origin; the log says which one is in use at
+startup.
 
 The catalogue must serve either a JSON array or `{ "apps": [...] }`, where each
 entry is:
