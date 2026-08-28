@@ -17,18 +17,43 @@ const CACHE_TTL = 6 * 60 * 60 * 1000;
 
 const quiet = { info: () => {}, ok: () => {}, warn: () => {}, err: () => {}, debug: () => {} };
 
+/**
+ * Where a catalogue app's logo comes from when the entry does not name one.
+ *
+ * `logo.png` in the root of the repository the app is released from, on the
+ * default branch — which is what `HEAD` means to raw.githubusercontent, and
+ * saves every entry restating a branch name that is only going to go stale.
+ *
+ * A convention rather than a requirement: an app with no logo.png answers 404,
+ * the phone quietly draws a monogram instead, and nothing else happens. That
+ * is the whole reason this is guessed rather than demanded — a catalogue that
+ * refused apps without artwork would be a catalogue with fewer apps in it.
+ */
+const logoFor = (source) => (source.type === 'github'
+    ? `https://raw.githubusercontent.com/${source.ref}/HEAD/logo.png`
+    : null);
+
 /** Keeps only entries shaped the way the UI and `sources.resolve` expect. */
 const usable = (entry) => {
     if (!entry || typeof entry.id !== 'string' || typeof entry.name !== 'string') return null;
     if (!entry.source || !['github', 'url'].includes(entry.source.type)) return null;
     if (typeof entry.source.ref !== 'string') return null;
 
+    const source = { type: entry.source.type, ref: entry.source.ref };
+
     return {
         id: entry.id,
         name: entry.name,
         description: typeof entry.description === 'string' ? entry.description : '',
         version: typeof entry.version === 'string' ? entry.version : null,
-        source: { type: entry.source.type, ref: entry.source.ref }
+        // https only, for the same reason sources.js requires it of a package
+        // URL. An icon is a much smaller thing to be wrong about, but it comes
+        // out of the same catalogue and there is no argument for holding it to
+        // a lower standard than the bytes it sits next to.
+        icon: typeof entry.icon === 'string' && entry.icon.startsWith('https://')
+            ? entry.icon
+            : logoFor(source),
+        source
     };
 };
 
@@ -100,4 +125,4 @@ const createCatalog = ({ url, cachePath, log }) => {
     return { fetch };
 };
 
-module.exports = { createCatalog, usable };
+module.exports = { createCatalog, usable, logoFor };

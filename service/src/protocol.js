@@ -25,15 +25,22 @@ const Outbound = {
     HELLO: 'hello',                 // { ok, needsPin }
     STATE: 'state',                 // DeviceState
     CATALOG: 'catalog',             // [CatalogEntry]
-    PROGRESS: 'progress',           // { phase, detail? }
+    PROGRESS: 'progress',           // { phase, detail?, identity? }
     DONE: 'done',                   // { packageId, appId }
     ERROR: 'error',                 // { code, message, remedy?, fatal }
-    DIR: 'dir',                     // [{ name, path, isDirectory }]
+    DIR: 'dir',                     // [{ name, path, isDirectory, size?, identity? }]
     NEEDS_CERTS: 'needsCerts',      // { ip }
     RELAY_STATE: 'relayState',      // { enabled }
     RELAY_DATA: 'relayData',        // { id, chunk }
     RELAY_END: 'relayEnd'           // { id, output, truncated? }
 };
+
+// An `identity` — on a progress message and on the packages in a directory
+// listing — is what `install/preview.js` read out of the archive itself:
+// `{ packageId, appId, name, version, isWgt, icon }`, where `icon` is the
+// application's own icon as a data URI. It is always optional. A package
+// whose manifest cannot be read still installs; it just arrives on screen as
+// the filename it came in as.
 
 // Install lifecycle. The UI renders these in order; each is entered exactly
 // once per attempt so a stuck install is visible rather than silent.

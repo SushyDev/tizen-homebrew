@@ -87,12 +87,34 @@ const DEVICE = {
     hasCertificates: true
 };
 
+// ── What the apps look like ──────────────────────────────────────────────
+//
+// Real artwork comes from two places — a catalogue app's logo.png in its own
+// repository, and the icon inside a package the service opened. Neither is
+// reachable here: there is no repository to fetch from and no .wgt on disk to
+// unzip. So these are drawn instead, as a gradient with a letter on it, which
+// is enough to answer the only question the harness is for — does a list of
+// tiles hold together, and does the artwork sit in its frame properly.
+//
+// Base64 rather than a raw SVG data URI: the markup contains `#` in every
+// colour, and a `#` in a URI starts a fragment.
+const artwork = (letter, top, bottom) => `data:image/svg+xml;base64,${Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">' +
+    `<stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bottom}"/>` +
+    '</linearGradient></defs>' +
+    '<rect width="64" height="64" fill="url(#g)"/>' +
+    '<text x="32" y="45" text-anchor="middle" fill="#ffffff" font-weight="700" ' +
+    `font-size="36" font-family="Helvetica,Arial,sans-serif">${letter}</text></svg>`
+).toString('base64')}`;
+
 const CATALOG = [
     {
         id: 'tube',
         name: 'YouTube',
         version: '0.1.0',
         description: 'YouTube without the advertisements',
+        icon: artwork('Y', '#ff4d4d', '#9b0000'),
         source: { type: 'github', ref: 'SushyDev/tube' }
     },
     {
@@ -100,9 +122,14 @@ const CATALOG = [
         name: 'Jellyfin',
         version: '10.9.1',
         description: 'Your own media server, on the television',
+        icon: artwork('J', '#aa5cd6', '#00a4dc'),
         source: { type: 'github', ref: 'jellyfin/jellyfin-tizen' }
     },
     {
+        // Deliberately without artwork. A catalogue logo is guessed rather
+        // than declared — logo.png in the app's own repository — so an app
+        // that has none is the ordinary case, and the row that falls back to
+        // a monogram needs looking at as much as the two that do not.
         id: 'kodi',
         name: 'Kodi',
         version: '21.0',
@@ -110,6 +137,28 @@ const CATALOG = [
         source: { type: 'url', ref: 'https://example.invalid/Kodi.wgt' }
     }
 ];
+
+// What the service reads out of a package sitting on the television's own
+// disk — see install/preview.js. The filenames below are what a browser would
+// have called the download; the identity is what the archive actually says.
+const PACKAGES = {
+    '/media/usb1/YouTube.wgt': {
+        packageId: 'tUb3Xq7Lm9', appId: 'tUb3Xq7Lm9.Tube', name: 'YouTube',
+        version: '0.1.0', isWgt: true, icon: artwork('Y', '#ff4d4d', '#9b0000')
+    },
+    '/media/usb1/Jellyfin.wgt': {
+        packageId: 'AprZAcqzcc', appId: 'AprZAcqzcc.Jellyfin', name: 'Jellyfin',
+        version: '10.9.1', isWgt: true, icon: artwork('J', '#aa5cd6', '#00a4dc')
+    },
+    // A package with no icon in it at all, which is legal and happens.
+    '/media/usb1/downloads/TizenHomebrew.wgt': {
+        packageId: 'GJBBYNLkgP', appId: 'GJBBYNLkgP.TizenHomebrew', name: 'Tizen Homebrew',
+        version: '0.1.0', isWgt: true, icon: null
+    }
+};
+
+const onStick = (name, path, size) =>
+    ({ name, path, isDirectory: false, size, identity: PACKAGES[path] || null });
 
 const DIRECTORY = {
     '/media': [
@@ -119,12 +168,12 @@ const DIRECTORY = {
     '/media/usb1': [
         { name: '..', path: '/media', isDirectory: true },
         { name: 'downloads', path: '/media/usb1/downloads', isDirectory: true },
-        { name: 'YouTube.wgt', path: '/media/usb1/YouTube.wgt', isDirectory: false },
-        { name: 'Jellyfin.wgt', path: '/media/usb1/Jellyfin.wgt', isDirectory: false }
+        onStick('YouTube.wgt', '/media/usb1/YouTube.wgt', 2528154),
+        onStick('Jellyfin.wgt', '/media/usb1/Jellyfin.wgt', 8912896)
     ],
     '/media/usb1/downloads': [
         { name: '..', path: '/media/usb1', isDirectory: true },
-        { name: 'TizenHomebrew.wgt', path: '/media/usb1/downloads/TizenHomebrew.wgt', isDirectory: false }
+        onStick('TizenHomebrew.wgt', '/media/usb1/downloads/TizenHomebrew.wgt', 58368)
     ]
 };
 
@@ -244,8 +293,28 @@ const conversation = (socket, say) => {
             installing: () => log.info('sdb', 'shell:0 vd_appinstall tUb3Xq7Lm9 /home/owner/share/tmp/sdk_tools/package.wgt')
         };
 
+        // What the package turned out to be. The real pipeline learns this the
+        // moment the bytes are in hand and sends it with the staging phase —
+        // see install/pipeline.js — and the card that renders it is one of the
+        // screens this stand-in exists to make visible.
+        const identity = PACKAGES[ref] || (() => {
+            const entry = CATALOG.filter((app) => app.id === ref)[0];
+
+            return entry
+                ? {
+                    packageId: `${entry.id}Xq7Lm9`,
+                    appId: `${entry.id}Xq7Lm9.${entry.name}`,
+                    name: entry.name,
+                    version: entry.version,
+                    isWgt: true,
+                    icon: entry.icon || null
+                }
+                : { packageId: 'pKg4Tz1Wv8', appId: null, name: String(ref).split('/').pop(),
+                    version: '1.0.0', isWgt: true, icon: null };
+        })();
+
         for (const [phase, detail, wait] of PHASES) {
-            send('progress', { phase, detail });
+            send('progress', { phase, detail, identity: phase === 'staging' ? identity : null });
             if (narrate[phase]) narrate[phase]();
             await new Promise((resolve) => setTimeout(resolve, wait));
         }

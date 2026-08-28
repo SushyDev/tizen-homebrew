@@ -644,6 +644,74 @@ p { margin: 0; }
   & + & { border-top: 1px solid rgb(167 214 238 / 14%); }
 }
 
+/* ── An app, as itself ───────────────────────────────────────────────────
+   Every package in this interface arrives named after a file, and the archive
+   it arrived in knows better — its own name, its version, the id it installs
+   under, and the icon the television will put on the home row. This is where
+   those land: a tile, a name with a version beside it, and one line of
+   machine facts underneath.
+
+   The tile is the same recess a field is — pressed into the pane, lit along
+   its top edge — with the artwork sitting inside it. That is deliberate. An
+   app icon is a picture from somewhere else, drawn by somebody with no idea
+   what it would sit on, and giving every one of them the same inset frame is
+   what stops a list of them from reading as stickers stuck onto the glass. */
+
+.ident {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.tile {
+  position: relative;
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  overflow: hidden;
+  border: 1px solid var(--inset-edge);
+  border-radius: var(--radius);
+  background-color: var(--inset);
+  box-shadow: inset 0 2px 5px rgb(0 0 0 / 45%), inset 0 1px 0 rgb(255 255 255 / 12%);
+}
+
+/* The upload well holds one package and nothing else, so there it is the
+   subject of the panel rather than a bullet beside a line of text. */
+.tile-hero {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: var(--radius-pane);
+}
+
+/* The letter behind the artwork, and the reason a missing icon costs nothing.
+   --faint is the ink for scaffolding, which is exactly what this is: a shape
+   holding the right space until a picture arrives, or instead of one. */
+.tile-mark {
+  font-family: var(--mono);
+  font-size: 1.125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--faint);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 55%);
+}
+
+/* Over the letter, filling the tile. Icons arrive at whatever shape their
+   author drew — a square 512px PNG out of a manifest, a wide banner out of a
+   repository's logo.png — and `cover` crops rather than letterboxes, so a
+   list of tiles stays one column of one shape however mixed the sources. */
+.tile-art {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 /* ── State ───────────────────────────────────────────────────────────────
    A severity band down the left edge and a matching wash behind it, so the
    state reads before any word does. Washed rather than filled: a solid
@@ -926,9 +994,17 @@ p { margin: 0; }
 /* A row that is itself the control — a directory listing, where the whole
    line is the target. The button chrome is stripped and the divider put
    back, so it sits in a list beside ordinary rows without announcing
-   itself. Focused, it fills the way a button does. */
+   itself. Focused, it fills the way a button does.
+
+   And a filled row needs room inside it. `.row` carries no horizontal padding
+   because an ordinary row has no edge of its own to sit away from — but this
+   one grows a lit background the moment it is focused, and with the text hard
+   against that background's rounded corner the row reads as clipped rather
+   than as filled. The padding is the fill's margin, not the text's. */
 .row-button {
   width: 100%;
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
   border: 0;
   border-radius: var(--radius);
   background: transparent;
@@ -963,6 +1039,14 @@ p { margin: 0; }
   box-shadow: inset 0 2px 6px rgb(0 0 0 / 45%);
   text-align: center;
   cursor: pointer;
+}
+
+/* With something in it the well stops being an invitation and becomes a
+   description of one package — which reads left, in line with every other row
+   on this page, rather than centred. */
+.drop-filled {
+  justify-items: stretch;
+  text-align: left;
 }
 
 /* ── Tabs ────────────────────────────────────────────────────────────────

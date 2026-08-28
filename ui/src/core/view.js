@@ -110,6 +110,22 @@ const delegate = (handlers) => {
     document.addEventListener('change', (event) => dispatch(event, 'data-on-change'));
     document.addEventListener('input', (event) => dispatch(event, 'data-on-input'));
 
+    // An icon that does not load takes itself off the page.
+    //
+    // Catalogue logos are guessed — logo.png in the app's own repository — so
+    // a missing one is the ordinary case and not a fault. Left alone, the
+    // browser draws its own broken-image glyph, which is uglier than anything
+    // this stylesheet contains and says "something is wrong here" about an
+    // app that is perfectly fine. Removing the element uncovers the monogram
+    // tile underneath it, which is what the markup put there for exactly this.
+    //
+    // Captured rather than bubbled: `error` on an image does not bubble, so
+    // there is no other way for one listener to hear all of them.
+    document.addEventListener('error', (event) => {
+        const image = event.target;
+        if (image && image.tagName === 'IMG' && image.parentNode) image.parentNode.removeChild(image);
+    }, true);
+
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') dispatch(event, 'data-on-enter');
     });

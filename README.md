@@ -153,6 +153,18 @@ Pages. Adding an app is a commit there — no rebuild, nothing to reinstall.
 }
 ```
 
+A `github` app's logo is `logo.png` in the root of its own repository, guessed
+rather than declared — `icon` overrides it with an https URL. An app with
+neither gets a monogram, and nothing else changes.
+
+**What a package says it is.** Everything else on the phone shows the
+application rather than the file it arrived in: its name, its version, the id
+it installs under and its own icon, read straight out of the archive. A stick
+plugged into the TV is listed that way, and so is anything mid-install, the
+moment the bytes are in hand. A `.wgt` chosen for upload is opened on the phone
+itself — see `ui/src/core/package.js` — so you can see what it is before
+sending a megabyte of it anywhere.
+
 ---
 
 ## Working on it

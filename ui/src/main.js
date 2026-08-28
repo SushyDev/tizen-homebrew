@@ -1,6 +1,7 @@
 import './app.css';
 
 import { createStore } from './core/store.js';
+import { readPackage } from './core/package.js';
 import { connect, upload } from './core/socket.js';
 import { mount, delegate } from './core/view.js';
 import { sea } from './scene/sea.js';
@@ -78,7 +79,14 @@ const store = createStore({
     usbPath: '/media',
 
     file: null,
+    reading: false,
     uploading: null,
+
+    // What the package about to be installed — or just installed — says it
+    // is: name, version, id and icon. It arrives from the service for every
+    // source it can open, and from core/package.js for an upload, which is
+    // the one the phone is holding. Null until something has been read.
+    identity: null,
 
     relayEnabled: false,
     relayBusy: false,
@@ -143,7 +151,16 @@ const { send } = connect({
                 relayOutput: `${store.get().relayOutput}${payload.truncated ? '\n[output truncated]' : ''}\n`
             }),
 
-            progress: () => ({ phase: payload.phase, phaseDetail: payload.detail, error: null, done: null }),
+            progress: () => ({
+                phase: payload.phase,
+                phaseDetail: payload.detail,
+                // Sent once, with the staging phase — the first moment the
+                // service knows what it is holding. Every other progress
+                // message leaves what was found in place.
+                identity: payload.identity || store.get().identity,
+                error: null,
+                done: null
+            }),
 
             done: () => ({ phase: null, phaseDetail: null, done: payload, error: null }),
 
@@ -180,8 +197,34 @@ const value = (id) => {
 };
 
 const beginInstall = (source, reference) => {
-    store.update({ error: null, done: null, phase: 'probing' });
+    // The identity goes with it: whatever is on screen belongs to the last
+    // install, and leaving it there would put one app's icon above another
+    // app's progress bar for the four seconds before the service answers.
+    store.update({ error: null, done: null, phase: 'probing', identity: null });
     send(Send.install, { source, ref: reference });
+};
+
+/**
+ * Takes a file the person picked, and opens it.
+ *
+ * Reading the archive is what turns `download (2).wgt` back into the
+ * application inside it, and it happens now rather than after the upload
+ * because the whole value of it is being able to see what this is *before*
+ * spending a minute of wifi on it. It is allowed to come back with nothing —
+ * see core/package.js — in which case the filename stands as it always did.
+ */
+const chooseFile = async (file) => {
+    store.update({ file, identity: null, reading: Boolean(file), error: null, done: null });
+
+    if (!file) return;
+
+    const app = await readPackage(file);
+
+    // Somebody may have chosen a different file while this one was being
+    // read. Whichever is in the well now is the one the card describes.
+    if (store.get().file !== file) return;
+
+    store.update({ identity: app, reading: false });
 };
 
 delegate({
@@ -200,7 +243,7 @@ delegate({
     'install:github': () => value('gh') && beginInstall('github', value('gh')),
     'install:url': () => value('url') && beginInstall('url', value('url')),
 
-    file: (element) => store.update({ file: element.files[0] || null, error: null, done: null }),
+    file: (element) => chooseFile(element.files[0] || null),
 
     upload: async () => {
         const { file, pin } = store.get();
@@ -268,7 +311,8 @@ delegate({
 ['dragover', 'drop'].forEach((name) => document.addEventListener(name, (event) => {
     event.preventDefault();
     if (name === 'drop' && event.dataTransfer.files.length) {
-        store.update({ tab: 'upload', file: event.dataTransfer.files[0] });
+        store.update({ tab: 'upload' });
+        chooseFile(event.dataTransfer.files[0]);
     }
 }));
 

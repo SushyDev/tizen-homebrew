@@ -12,6 +12,7 @@ const { createHash } = require('crypto');
 
 const sources = require('./sources.js');
 const manifest = require('./manifest.js');
+const preview = require('./preview.js');
 const installer = require('./installer.js');
 const { size, took, rate } = require('../obs/units.js');
 
@@ -35,9 +36,11 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
     /**
      * Runs one install.
      *
-     * `report(phase, detail)` is called as each step begins — that is what
-     * becomes progress on a phone screen. `request` names the source; nothing
-     * else about it reaches the steps below.
+     * `report(phase, detail, extra)` is called as each step begins — that is
+     * what becomes progress on a phone screen. `extra` carries the one thing a
+     * phase word cannot: `{ identity }`, once there is a package to identify.
+     * `request` names the source; nothing else about it reaches the steps
+     * below.
      */
     const install = async (request, report = () => {}) => {
         if (store.select('installing')) {
@@ -136,7 +139,14 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
         const readIdentity = (carried) => {
             const identity = manifest.identify(carried.archive);
 
-            report('staging', identity.name || identity.packageId);
+            // Until this line the phone has had nothing but the reference
+            // somebody typed — a repo name, a URL, a filename off a stick.
+            // This is the first moment anything here knows what the package
+            // actually *is*, so it goes out with the phase rather than waiting
+            // for the install to finish: the screen showing "SushyDev/tube"
+            // becomes the screen showing Tube, with its own icon on it.
+            report('staging', identity.name || identity.packageId,
+                { identity: preview.describe(carried.archive, identity) });
             say.info(`identified ${identity.name || 'an unnamed package'} ${identity.version || ''} ` +
                 `(${identity.packageId}${identity.appId ? `, app ${identity.appId}` : ''}, ${identity.isWgt ? 'wgt' : 'tpk'})`);
 

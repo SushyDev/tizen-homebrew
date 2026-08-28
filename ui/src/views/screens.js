@@ -99,6 +99,64 @@ const status = (state) => {
              in Apps › 12345 › Settings, then restart the TV — that value is only read at startup.`);
 };
 
+// ── An app, as itself ─────────────────────────────────────────────────
+
+// Everything below this line exists because a package arrives named after the
+// file it came in rather than after what it is. `download (2).wgt` is a fact
+// about somebody's browser; the name, version, id and icon inside the archive
+// are facts about the application, and the service reads them back out of
+// every source it can — see install/preview.js, and core/package.js for the
+// upload, which is the one case where the phone has the bytes and the TV does
+// not. Both hand back the same shape, so one card renders either.
+
+// Bytes, at the precision somebody scanning a list of files wants — which is
+// one decimal at megabytes and none at all below that.
+const weight = (bytes) => (bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.round(bytes / 1024)} KB`);
+
+// The stand-in for artwork, and the reason a missing icon costs nothing: a
+// tile with a letter in it is a shape of the right size in the right place,
+// so a list of apps where half have logos does not look like a list with
+// holes in it.
+const monogram = (name) => String(name || '?').trim().charAt(0) || '?';
+
+// The letter is painted first and the art over the top of it. That ordering
+// is what makes the fallback free: an icon that 404s — a catalogue entry
+// whose repository has no logo.png — is removed from the page by view.js and
+// the letter that was always behind it is simply what is left.
+const tile = (app, hero = false) => html`
+  <span class="tile${hero ? ' tile-hero' : ''}">
+    <span class="tile-mark">${monogram(app.name || app.packageId)}</span>
+    ${app.icon ? html`<img class="tile-art" src="${app.icon}" alt="">` : ''}
+  </span>`;
+
+/**
+ * One package, shown as the thing it is.
+ *
+ * `app` is `{ name, version, packageId, icon }` from wherever it was read;
+ * every field is optional, and the card degrades a field at a time rather
+ * than all at once. `below` is the line under the name — a description in the
+ * catalogue, an id and a filename on a stick, a size on an upload — because
+ * that is the one part each screen has a different answer for.
+ *
+ * Spans throughout, carrying `display: grid` from their classes. A row on a
+ * USB stick is a `<button>`, whose content model is phrasing content only, so
+ * a `<div>` in here would be invalid the moment this card was used for the
+ * screen it was most obviously needed on.
+ */
+const identity = (app, below = '', hero = false) => html`
+  <span class="ident">
+    ${tile(app, hero)}
+    <span class="stack stack-tight">
+      <span class="inline">
+        <span class="name truncate">${app.name || app.packageId || 'Unnamed'}</span>
+        ${app.version ? html`<span class="mono micro">${app.version}</span>` : ''}
+      </span>
+      ${below}
+    </span>
+  </span>`;
+
 // ── Tabs ──────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -131,13 +189,7 @@ const catalog = (state) => section('Available', state.catalog.length === 0
     : html`<div class="list">
         ${state.catalog.map((app) => html`
           <div class="row split">
-            <div class="stack stack-tight">
-              <span class="inline">
-                <span class="name truncate">${app.name}</span>
-                <span class="mono micro">${app.version || ''}</span>
-              </span>
-              <span class="small truncate">${app.description || app.source.ref}</span>
-            </div>
+            ${identity(app, html`<span class="small truncate">${app.description || app.source.ref}</span>`)}
             <button class="btn btn-ghost" data-focus="app:${app.id}"
                     data-on-click="install:catalog:${app.id}">install</button>
           </div>`)}
@@ -145,13 +197,39 @@ const catalog = (state) => section('Available', state.catalog.length === 0
     html`<button class="btn btn-ghost btn-start" data-focus="refresh"
                  data-on-click="catalog:refresh">refresh</button>`);
 
+// What the well says once something has been dropped in it.
+//
+// A filename and a size is what the browser knows; the archive knows what the
+// application is called, what version it is and what it will install as, and
+// it is sitting right here on the phone. So it is opened — core/package.js —
+// and the well shows the app. The filename does not disappear: it is the
+// thing somebody recognises from their downloads folder, and it moves to the
+// line underneath where it belongs.
+const chosen = (state) => {
+    if (!state.file) {
+        return html`
+          <span class="mono small">choose a file</span>
+          <span class="micro mono">or drag one here</span>`;
+    }
+
+    const app = state.identity || { name: state.file.name };
+
+    // The filename only appears down here once the name above is the app's
+    // own; while it is still the heading, printing it twice says nothing.
+    const facts = [
+        state.identity && state.identity.packageId,
+        state.identity && state.file.name,
+        weight(state.file.size)
+    ].filter(Boolean).join(' · ');
+
+    return identity(app, html`
+      <span class="mono micro truncate">${state.reading ? 'reading the package…' : facts}</span>`, true);
+};
+
 const upload = (state) => section('Upload a package', html`
     <p class="small">Send a .wgt straight from this device. Nothing needs hosting.</p>
 
-    <label for="file" class="drop">
-      <span class="mono ${state.file ? 'ink' : 'small'}">${state.file ? state.file.name : 'choose a file'}</span>
-      <span class="micro mono">${state.file ? `${Math.round(state.file.size / 1024)} KB` : 'or drag one here'}</span>
-    </label>
+    <label for="file" class="drop${state.file ? ' drop-filled' : ''}">${chosen(state)}</label>
     <input id="file" type="file" accept=".wgt,.tpk" hidden data-on-change="file">
 
     ${state.uploading !== null ? html`<div class="meter"><i style="width:${state.uploading}%"></i></div>` : ''}`,
@@ -179,15 +257,30 @@ const fromUrl = (state) => remoteSource({
     hint: 'Must be https.', value: state.url
 });
 
+// A directory is a path and nothing else. A package is an application, and
+// the service opened it far enough to say which one — so the row shows the
+// app, with the filename demoted to the line beneath it where it is still
+// the thing somebody recognises but no longer the only thing on offer.
 const usb = (state) => section('Attached storage', html`
     <span class="mono small truncate">${state.usbPath}</span>
     <div class="list">
-      ${state.usb.map((entry) => html`
-        <button class="row row-button inline" data-focus="path:${entry.path}"
-                data-on-click="usb:${entry.path}">
-          <span class="mono micro">${entry.isDirectory ? '/' : '·'}</span>
-          <span class="mono truncate ${entry.isDirectory ? 'small' : 'ink'}">${entry.name}</span>
-        </button>`)}
+      ${state.usb.map((entry) => (entry.isDirectory
+        ? html`
+          <button class="row row-button inline" data-focus="path:${entry.path}"
+                  data-on-click="usb:${entry.path}">
+            <span class="mono micro">/</span>
+            <span class="mono truncate small">${entry.name}</span>
+          </button>`
+        : html`
+          <button class="row row-button" data-focus="path:${entry.path}"
+                  data-on-click="usb:${entry.path}">
+            ${identity(entry.identity || { name: entry.name }, html`
+              <span class="mono micro truncate">${[
+                  entry.identity && entry.identity.packageId,
+                  entry.identity && entry.name,
+                  entry.size ? weight(entry.size) : null
+              ].filter(Boolean).join(' · ')}</span>`)}
+          </button>`))}
     </div>`);
 
 const relay = (state) => section('Command relay', html`
@@ -233,12 +326,23 @@ const PHASE_WORDS = {
 const outcome = (state) => {
     if (state.phase) {
         const step = PHASES.indexOf(state.phase) + 1;
+        const app = state.identity;
+
+        // The detail is the reference somebody typed until the package has
+        // been opened, and the package's own name afterwards — at which point
+        // the card above is already showing it, and repeating it in the
+        // counter is one screen saying the same word twice.
+        const named = app && (app.name || app.packageId);
+        const detail = state.phaseDetail && state.phaseDetail !== named
+            ? ` · ${state.phaseDetail}`
+            : '';
 
         return html`
           <div class="glass pad stack stack-snug">
+            ${app ? identity(app, html`<span class="mono micro truncate">${app.packageId}</span>`) : ''}
             <div class="split split-baseline">
               <span class="value truncate">${PHASE_WORDS[state.phase] || state.phase}</span>
-              <span class="mono micro">${step}/${PHASES.length}${state.phaseDetail ? ` · ${state.phaseDetail}` : ''}</span>
+              <span class="mono micro">${step}/${PHASES.length}${detail}</span>
             </div>
             <div class="meter"><i style="width:${Math.round((step / PHASES.length) * 100)}%"></i></div>
           </div>`;
@@ -259,11 +363,17 @@ const outcome = (state) => {
     }
 
     if (state.done) {
+        // Whatever was read out of the archive, where anything was — it has
+        // the icon, and the identity the television just installed under is
+        // the one worth showing back. The outcome itself is the fallback, and
+        // carries the same four fields under different circumstances.
+        const app = state.identity || state.done;
+
         return html`
           <div class="state state-ok">
             <span class="state-head">Installed</span>
-            <span class="small ink">${state.done.name || state.done.packageId}</span>
-            <span class="mono micro wrap">${state.done.packageId}${state.done.version ? ` · ${state.done.version}` : ''} · on the TV’s home row</span>
+            ${identity(app, html`<span class="mono micro truncate">${app.packageId || ''}</span>`)}
+            <span class="small">On the TV’s home row.</span>
           </div>`;
     }
 

@@ -79,6 +79,7 @@ const run = async () => {
     // --- the happy path, and the order of its steps ----------------------
     {
         const phases = [];
+        const announced = [];
         const store = createStore({ installing: false, catalog: [] });
 
         // Certificates, because there is no install without them any more:
@@ -92,7 +93,10 @@ const run = async () => {
 
         const outcome = await install(
             { source: 'upload', reference: 'tizenhomebrew.wgt', upload: realPackage },
-            (phase) => phases.push(phase)
+            (phase, _detail, extra) => {
+                phases.push(phase);
+                if (extra && extra.identity) announced.push([phase, extra.identity]);
+            }
         );
 
         check('an upload installs end to end',
@@ -100,6 +104,18 @@ const run = async () => {
         check('the steps run in order',
             phases.join(' → ') === 'probing → fetching → resigning → staging → installing', phases.join(' → '));
         check('the store is released afterwards', store.select('installing') === false, 'still marked installing');
+
+        // Whatever asked for the install has had nothing but the reference it
+        // typed up to this point. The identity is what lets a phone stop
+        // showing a filename and start showing the application — see
+        // install/preview.js — and it has to arrive while the install is still
+        // running, not with the outcome.
+        check('the package announces what it is, once, as it is staged',
+            announced.length === 1 &&
+            announced[0][0] === 'staging' &&
+            announced[0][1].packageId === 'GJBBYNLkgP' &&
+            announced[0][1].name === 'Tizen Homebrew',
+            JSON.stringify(announced));
     }
 
     // --- one at a time ----------------------------------------------------
