@@ -299,7 +299,7 @@ const start = () => {
 
             json(response, { ok: true, phases, ...outcome });
         } catch (error) {
-            failure(response, 500, error.code || ErrorCode.INTERNAL, error.message);
+            failure(response, 500, error.code || ErrorCode.INTERNAL, error.message, error.remedy);
             // The phases show how far it got, which is usually the useful part.
             log.on(Facility.PKG).err(`upload install stopped after: ${phases.join(', ') || 'nothing'}`);
         }

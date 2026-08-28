@@ -28,21 +28,37 @@ const Send = {
 
 // What each error code means to someone holding a phone, rather than what it
 // means to the service.
+//
+// Titles only, and deliberately: these are the strings that would be
+// translated, so they say what happened and never what to do about it. What to
+// do arrives with the failure as `remedy`, from service/src/install/verdicts.js
+// — it names the package to remove or the command to run, and neither can be
+// known here. The codes come from protocol.js; every one of them belongs in
+// this table, because a code with no entry renders as a bare "Failed."
 const EXPLANATIONS = {
     unauthorized: 'Enter the PIN shown on the TV first.',
     lockedOut: 'Too many incorrect PINs.',
     debugModeOff: 'Developer Mode is off on this TV.',
     sdbUnreachable: 'This TV cannot reach its own sdb daemon.',
+    sdbRefused: 'This TV refused the connection to its own sdb daemon.',
+    sdbTimeout: 'The TV stopped answering partway through.',
+    debugIpWrong: 'The TV’s developer host IP is not 127.0.0.1.',
     notFound: 'Not found.',
     downloadFailed: 'The download failed.',
     badPackage: 'That file is not a valid Tizen package.',
     certsMissing: 'This TV needs a Samsung certificate first.',
     resignFailed: 'Re-signing failed.',
-    installFailed: 'The TV rejected the install.',
-    certRejected: 'The TV rejected the certificate; it has been cleared.',
     badMessage: 'That request was refused.',
     relayDisabled: 'The command relay is off.',
-    internal: 'Something went wrong.'
+    internal: 'Something went wrong.',
+
+    // What a television says about a package it will not install.
+    installFailed: 'The TV rejected the install.',
+    certRejected: 'The TV rejected the certificate; it has been cleared.',
+    authorMismatch: 'A different build of this app is already installed.',
+    certChainInvalid: 'That package is signed for a device this is not.',
+    securityError: 'The TV refused the package before reading it.',
+    privilegeTooHigh: 'That app asks for more than this TV will grant.'
 };
 
 const store = createStore({
@@ -137,7 +153,8 @@ const { send } = connect({
                 uploading: null,
                 error: {
                     title: EXPLANATIONS[payload.code] || 'Failed.',
-                    detail: payload.message || ''
+                    detail: payload.message || '',
+                    remedy: payload.remedy || null
                 }
             })
         };
@@ -202,7 +219,11 @@ delegate({
         } catch (failure) {
             store.update({
                 uploading: null,
-                error: { title: EXPLANATIONS[failure.code] || 'Install failed.', detail: failure.message }
+                error: {
+                    title: EXPLANATIONS[failure.code] || 'Install failed.',
+                    detail: failure.message,
+                    remedy: failure.remedy || null
+                }
             });
         }
     },

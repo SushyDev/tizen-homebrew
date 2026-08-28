@@ -101,33 +101,32 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
             return { ...carried, archive, name };
         };
 
-        // Re-signed whenever there is a certificate to do it with, not only
-        // when the television insists.
+        // Always re-signed with this television's own pair. Every source —
+        // the catalogue, an upload, a GitHub release, a stick in the side of
+        // the set — arrives here and leaves signed by the same certificate.
         //
-        // From Tizen 7 the set checks that the distributor certificate was
-        // minted for it, so re-signing is the only way anything installs at
-        // all. Below that it is merely the difference between "packages this
-        // particular developer signed" and "packages" — an unsigned build, or
-        // one signed for somebody else's TV, is refused just the same, and a
-        // signature this television already trusts costs 150ms to apply.
-        const resignIfRequired = async (carried) => {
-            const stored = config.hasCertificates(carried.state.duid);
-
-            if (!stored) {
-                if (!carried.state.needsResign) {
-                    say.info('no certificates stored — installing the package as it came');
-                    return carried;
-                }
-
+        // There used to be a way past this: below Tizen 7 a set with no stored
+        // pair installed the package exactly as it came, carrying whoever's
+        // signature it was built with. That is the one path where what ends up
+        // on a television is not something this machine signed, and it failed
+        // in the least useful way available — the install ran, the set refused
+        // it at the end, and the reason named a certificate nobody here chose.
+        //
+        // From Tizen 7 the set checks the distributor certificate was minted
+        // for it, so re-signing was already the only way anything installed at
+        // all. Below that it is the difference between "packages this
+        // television's owner signed" and "packages", which is worth 150ms.
+        const resign = async (carried) => {
+            if (!config.hasCertificates(carried.state.duid)) {
                 throw refuse('certsMissing',
-                    'This TV runs Tizen 7 or newer, so packages must be re-signed for it. ' +
-                    'Send it a certificate pair first — see `npm run certs`.');
+                    'Packages are signed with this TV\'s own certificate pair, and none is ' +
+                    'stored yet. Send one first — see `npm run certs`.');
             }
 
             report('resigning');
 
-            const resign = await resigner();
-            const { archive, device, files } = await resign(carried.archive);
+            const sign = await resigner();
+            const { archive, device, files } = await sign(carried.archive);
 
             say.ok(`re-signed ${files} files for ${device || 'this television'}`);
 
@@ -196,7 +195,7 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
         try {
             const readied = await probeReadiness();
             const acquired = await acquirePackage(readied);
-            const signed = await resignIfRequired(acquired);
+            const signed = await resign(acquired);
             const staged = stageOnDisk(readIdentity(signed));
             const installed = await runInstaller(staged);
             const outcome = recordOutcome(installed);
@@ -206,6 +205,12 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
             return outcome;
         } catch (error) {
             say.err(`install failed after ${took(at())}: ${error.code || 'internal'} — ${error.message}`);
+
+            // What to do about it, when the failure is one verdicts.js knows.
+            // It reaches the phone in the error payload; putting it in the log
+            // too means somebody reading the log console has the answer in
+            // front of them rather than the verdict alone.
+            if (error.remedy) error.remedy.split('\n').forEach((line) => say.warn(line));
 
             // Certificates the TV rejected are worse than none: they make every
             // later attempt fail identically. Dropping them means the next one

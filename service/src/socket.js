@@ -90,6 +90,10 @@ const attach = ({ server, store, authorise, installer, catalog, relay, refreshDe
             send(Outbound.ERROR, {
                 code: expected ? error.code : ErrorCode.INTERNAL,
                 message: (error && error.message) || 'Unexpected failure.',
+                // Present only on failures install/verdicts.js recognised. The
+                // UI's own table says what a code means; this says what to do
+                // about it, which it cannot know because it names the package.
+                remedy: (error && error.remedy) || null,
                 fatal: false
             });
         };

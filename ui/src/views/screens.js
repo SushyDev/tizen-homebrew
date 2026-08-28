@@ -245,11 +245,16 @@ const outcome = (state) => {
     }
 
     if (state.error) {
+        // Three lines, in the order somebody actually needs them: what went
+        // wrong, what the television itself said, and what to do about it.
+        // The last is absent for failures nothing has a cure for, and that is
+        // better than a sentence invented to fill the space.
         return html`
           <div class="state state-fault">
             <span class="state-head">Failed</span>
             <span class="small ink">${state.error.title}</span>
             <span class="mono micro wrap">${state.error.detail}</span>
+            ${state.error.remedy ? html`<span class="small wrap">${state.error.remedy}</span>` : html``}
           </div>`;
     }
 
