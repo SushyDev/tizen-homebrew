@@ -42,22 +42,20 @@ Samsung binds a signing certificate to one television, identified by its DUID:
 npm run duid -- 192.168.2.9
 ```
 
-Use the DUID it prints — a pair minted for a different set uploads fine and is
-then refused with `Check certificate error`, which names neither the
-certificate nor the device:
+Then mint a pair for it. This opens a Samsung sign-in, waits for the browser,
+and writes the result:
 
 ```sh
-npx tizenjs create-samsung-cert --privilege Public \
-  --name <your-name> --email <your@email> --password <pick-one> \
-  --duidList <the-DUID> --output ~/.tizen-certs
-
-echo -n '<pick-one>' > ~/.tizen-certs/author.pw
+npm run mint -- --duid <the-DUID>
 ```
 
-That writes `author.p12` and `distributor.p12`. Both are needed — a Samsung TV
-rejects the stock Tizen distributor certificate — and everything here looks in
-`~/.tizen-certs` by default, which is why the password goes in a file beside
-them rather than into your shell.
+That writes `author.p12`, `distributor.p12` and the password into
+`~/.tizen-certs`, which is where everything here looks by default.
+
+Both certificates are needed — a Samsung TV rejects the stock Tizen
+distributor one — and the DUID has to be right: a pair minted for another set
+signs packages that upload fine and are then refused with `Check certificate
+error`, a message naming neither the certificate nor the device.
 
 ### 4. Build it and put it on the TV
 
@@ -115,7 +113,9 @@ npm run package && npm run push -- 192.168.2.9 <pin>
 
 `npm run duid -- 192.168.2.9 <pin>` asks the television through Tizen Homebrew
 itself, which works with developer mode pinned to loopback — and says outright
-if the certificates on this machine belong to a different set.
+if the certificates on this machine belong to a different set. `npm run mint --
+192.168.2.9 <pin>` does the same and mints a pair for whatever it finds, so
+neither command needs you to know the DUID.
 
 ---
 

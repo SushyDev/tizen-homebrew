@@ -39,8 +39,8 @@ const { networkInterfaces } = require('os');
 const { existsSync, readFileSync } = require('fs');
 
 const ui = require('./ui.js');
-const sdb = require('../service/src/tv/sdb.js');
 const certificates = require('./certificates.js');
+const { duidOf } = require('./tv.js');
 
 const DEVICE_API_PORT = 8001;
 
@@ -120,86 +120,6 @@ function boundDevice() {
     return null;
 }
 
-/** The DUID as sdbd itself reports it, or null when sdbd will not have us. */
-async function ask(ip) {
-    const session = await sdb.connect({ host: ip, timeout: 6000 });
-
-    try {
-        return await session.getDuid();
-    } finally {
-        session.close();
-    }
-}
-
-/**
- * The same question, relayed through Tizen Homebrew on the television.
- *
- * The relay is off by default and this turns it on to ask, then puts it back
- * the way it found it. That is a real escalation to perform on somebody's
- * behalf, so it happens only when a PIN was given — which is a person reading
- * a code off the screen and typing it here.
- */
-function relay(ip, pin) {
-    const WebSocket = require('ws');
-
-    return new Promise((resolve, reject) => {
-        const socket = new WebSocket(`ws://${ip}:8091`);
-        const send = (type, payload) => socket.send(JSON.stringify({ type, payload: payload || {} }));
-
-        const finish = (error, value) => {
-            try {
-                socket.close();
-            } catch (e) { /* already gone */ }
-
-            if (error) reject(error); else resolve(value);
-        };
-
-        const deadline = setTimeout(() => finish(friendly(`Tizen Homebrew did not answer on ${ip}:8091.`)), 25000);
-
-        let greeted = false;
-        let wasEnabled = false;
-
-        socket.on('message', (raw) => {
-            const { type, payload } = JSON.parse(raw);
-
-            if (type === 'hello' && !greeted) {
-                greeted = true;
-                return send('hello', { pin });
-            }
-
-            if (type === 'hello' && !payload.ok) {
-                clearTimeout(deadline);
-                return finish(friendly('That PIN was refused. It changes every time the service starts — check the TV screen.'));
-            }
-
-            // The relay state arrives unasked on pairing, which is how its
-            // previous setting is known and can be restored afterwards.
-            if (type === 'relayState' && !payload.enabled && !wasEnabled) return send('setRelay', { enabled: true });
-            if (type === 'relayState' && payload.enabled) {
-                wasEnabled = true;
-                return send('relayExec', { id: 'duid', command: 'getduid' });
-            }
-
-            if (type === 'relayEnd') {
-                clearTimeout(deadline);
-                send('setRelay', { enabled: false });
-                return setTimeout(() => finish(null, String(payload.output || '').trim() || null), 400);
-            }
-
-            if (type === 'error') {
-                clearTimeout(deadline);
-                return finish(friendly(`Tizen Homebrew refused: ${payload.message}`));
-            }
-        });
-
-        socket.on('error', (error) => {
-            clearTimeout(deadline);
-            finish(friendly(`Could not reach Tizen Homebrew at ${ip}:8091 — ${error.message}\n\n` +
-                '  Open Tizen Homebrew on the TV; the service only runs while it is open.'));
-        });
-    });
-}
-
 async function main() {
     const [ip, pin] = process.argv.slice(2).filter((argument) => argument[0] !== '-');
 
@@ -228,26 +148,15 @@ async function main() {
 
     const reported = device && device.duid ? String(device.duid) : null;
 
-    // Through the channel first when there is a PIN for it: it works in the
-    // state a set actually lives in, where sdb does not.
-    const relayed = pin ? await relay(ip, pin) : null;
-
-    const measured = relayed || await ask(ip).catch((error) => {
-        // sdbd accepts the socket from any address and only then drops it if
-        // the developer host IP is not ours. Once a TV has been pinned to
-        // 127.0.0.1 — which is the whole point of this project — that is the
-        // expected outcome from a laptop, not a fault.
-        if (['sdbRefused', 'sdbReset', 'sdbClosed', 'sdbTimeout'].indexOf(error.code) !== -1) return null;
-        throw error;
-    });
+    const measured = await duidOf(ip, pin);
 
     const bound = boundDevice();
 
     if (measured) {
         ui.ok('duid', measured);
-        ui.note(ui.style.dim(relayed
-            ? '  from `getduid`, relayed through Tizen Homebrew — the value create-samsung-cert wants'
-            : '  from `getduid` over sdb — the value create-samsung-cert wants'));
+        ui.note(ui.style.dim(pin
+            ? '  from `getduid`, relayed through Tizen Homebrew — the value a certificate binds to'
+            : '  from `getduid` over sdb — the value a certificate binds to'));
 
         if (bound && bound.device === measured) {
             ui.note(ui.style.dim(`  the certificate in ${bound.path} is bound to this TV`));
@@ -263,11 +172,8 @@ async function main() {
         }
 
         ui.blank();
-        ui.note('Mint a certificate pair bound to it:');
-        ui.blank();
-        ui.note(ui.style.dim('  npx tizenjs create-samsung-cert --privilege Public \\'));
-        ui.note(ui.style.dim('    --name <you> --email <you@example.com> --password <password> \\'));
-        ui.note(ui.style.dim(`    --duidList ${measured} --output ~/.tizen-certs`));
+        ui.note('Mint a pair bound to it:');
+        ui.note(ui.style.dim(`  npm run mint -- ${ip}${pin ? ` ${pin}` : ''}`));
         ui.blank();
         return;
     }

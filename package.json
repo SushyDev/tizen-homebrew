@@ -23,6 +23,7 @@
     "package": "node tools/package.js",
     "bootstrap": "node tools/bootstrap.js",
     "duid": "node tools/duid.js",
+    "mint": "node tools/mint.js",
     "certs": "node tools/certs.js",
     "push": "node tools/push.js",
     "dev": "npm run dev --workspace ui",
