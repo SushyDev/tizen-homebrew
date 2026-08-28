@@ -36,6 +36,7 @@ const config = require('./config.js');
 const protocol = require('./protocol.js');
 const { createInstaller } = require('./install/pipeline.js');
 const { createCatalog } = require('./install/catalog.js');
+const { createUpdates } = require('./install/updates.js');
 
 const { ErrorCode } = protocol;
 
@@ -81,6 +82,12 @@ const start = () => {
     const catalogCache = join(homedir(), 'share', 'homebrewCatalog.json');
 
     const catalog = createCatalog({ url: catalogUrl, cachePath: catalogCache, log });
+
+    // Which of those apps are already here, and which have released something
+    // newer since. Tizen Homebrew is one of them: the catalogue is how it
+    // reaches its own next version, so the app list on a phone is also the
+    // update button for the thing drawing it.
+    const updates = createUpdates({ packages, log });
 
     log.on(Facility.CAT).info(`origin ${catalogUrl}${stored ? ' (from the stored configuration)' : ''}`);
     log.on(Facility.CFG).info(`cache ${catalogCache}`);
@@ -478,7 +485,7 @@ const start = () => {
         svc.ok(`startup finished in ${took(recorded.uptime())}`);
     });
 
-    require('./socket.js').attach({ server, store, secret, authorise, installer, catalog, relay, refreshDevice, config, protocol, log });
+    require('./socket.js').attach({ server, store, secret, authorise, installer, catalog, updates, relay, refreshDevice, config, protocol, log });
 
     return { server, port: PORT, pin: secret, build: BUILD };
 };

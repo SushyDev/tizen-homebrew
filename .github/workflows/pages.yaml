@@ -51,6 +51,12 @@ jobs:
               const named = entry && typeof entry.id === 'string' && typeof entry.name === 'string';
               const sourced = entry && entry.source && ['github', 'url'].includes(entry.source.type) && typeof entry.source.ref === 'string';
               if (!named || !sourced) throw new Error('Entry ' + index + ' is not a usable catalogue entry.');
+              // Optional, and quietly dropped by the service when it is not a
+              // string — which would leave the app silently unable to say it
+              // had an update. A typo here is worth failing for.
+              if ('packageId' in entry && typeof entry.packageId !== 'string') {
+                throw new Error('Entry ' + index + ' has a packageId that is not a string.');
+              }
             });
             console.log(list.length + ' apps');
           "

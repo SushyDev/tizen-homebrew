@@ -40,6 +40,11 @@ const BROWSER_GLOBALS = {
     Headers: 'readonly',
     Request: 'readonly',
     Response: 'readonly',
+    // The platform's own inflate and base64, which is why reading a .wgt in
+    // the browser — core/package.js — needs no zip library in the bundle.
+    DecompressionStream: 'readonly',
+    TextDecoder: 'readonly',
+    btoa: 'readonly',
     URL: 'readonly',
     Intl: 'readonly',
     console: 'readonly',

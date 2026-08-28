@@ -1,7 +1,9 @@
 import './app.css';
 
 import { createStore } from './core/store.js';
+import { readPackage } from './core/package.js';
 import { connect, upload } from './core/socket.js';
+import { remembered, remember, forget, DIGITS } from './core/pairing.js';
 import { mount, delegate } from './core/view.js';
 import { sea } from './scene/sea.js';
 import { theme } from './scene/theme.js';
@@ -61,11 +63,24 @@ const EXPLANATIONS = {
     privilegeTooHigh: 'That app asks for more than this TV will grant.'
 };
 
+// The last PIN that paired this phone with this TV, if there is one. It is
+// offered on connect rather than asked for again — see core/pairing.js for
+// what is kept, and for when it is dropped.
+const known = remembered();
+
 const store = createStore({
     connection: 'connecting…',
     paired: false,
-    pin: '',
+    pin: known,
     pinError: null,
+
+    // The PIN this phone is waiting on an answer for, and whether it came from
+    // memory rather than from somebody typing it. The first tells a refusal
+    // apart from the greeting — see the hello reaction, where the service
+    // sends the same frame for both. The second decides how that refusal is
+    // worded, and that the field is not shown for the moment a restore takes.
+    pending: '',
+    restoring: known.length === DIGITS,
 
     device: null,
     catalog: [],
@@ -78,7 +93,14 @@ const store = createStore({
     usbPath: '/media',
 
     file: null,
+    reading: false,
     uploading: null,
+
+    // What the package about to be installed — or just installed — says it
+    // is: name, version, id and icon. It arrives from the service for every
+    // source it can open, and from core/package.js for an upload, which is
+    // the one the phone is holding. Null until something has been read.
+    identity: null,
 
     relayEnabled: false,
     relayBusy: false,
@@ -113,19 +135,63 @@ const channel = theme({
 // ── The connection ────────────────────────────────────────────────────
 
 const { send } = connect({
-    onStatus: (connection) => store.update({ connection }),
+    // A connection that is not up cannot be pairing. Without the second half
+    // of this, a phone that cannot reach its TV sits on "offering the code"
+    // with no field to type a different one into.
+    onStatus: (connection) => store.update(
+        connection === 'connected' ? { connection } : { connection, pending: '', restoring: false }
+    ),
 
     onMessage: (type, payload) => {
         // One place where every inbound message is turned into new state. A
         // handler that returns nothing leaves the state alone.
         const reactions = {
             hello: () => {
-                if (payload.ok) return { paired: true, pinError: null };
-                // A rejected PIN is only worth reporting once one was offered;
-                // the service greets every connection with needsPin.
-                return store.get().pin.length === 6
-                    ? { pinError: 'That PIN did not match.', pin: '' }
-                    : null;
+                const { pin, pending, restoring } = store.get();
+
+                if (payload.ok) {
+                    // Kept only once it has actually worked, so the code this
+                    // phone offers next time is never one that never did.
+                    remember(pin);
+                    return { paired: true, pending: '', restoring: false, pinError: null };
+                }
+
+                // The service greets every connection with the same needsPin
+                // frame it refuses with, so the two are told apart by whether
+                // this phone is waiting on an answer. Nothing is pending, so
+                // this is the greeting — and the greeting is the moment to
+                // offer the code this phone already has rather than ask for
+                // it again. Offering it any earlier, on the socket opening,
+                // would make the greeting itself look like the refusal.
+                //
+                // A reconnection lands here too: the service knows nothing
+                // about a client that dropped, so pairing has to be redone,
+                // and until this it was not — the page stayed looking paired
+                // while everything it tried came back unauthorized.
+                if (!pending) {
+                    if (pin.length !== DIGITS) return null;
+
+                    send(Send.hello, { pin });
+                    return { pending: pin, restoring: pin === remembered() };
+                }
+
+                // A refusal, then. Wrong, or merely old — the service mints a
+                // new code every start, so a remembered one stops matching the
+                // moment the TV restarts. Either way it is dropped rather than
+                // retried: the socket reconnects every second and a half, and
+                // retrying would spend all five attempts before anybody had
+                // finished looking up at the screen.
+                forget();
+
+                return {
+                    paired: false,
+                    pending: '',
+                    pin: '',
+                    restoring: false,
+                    pinError: restoring
+                        ? 'The TV has restarted, so its PIN has changed.'
+                        : 'That PIN did not match.'
+                };
             },
 
             state: () => ({ device: payload }),
@@ -143,20 +209,47 @@ const { send } = connect({
                 relayOutput: `${store.get().relayOutput}${payload.truncated ? '\n[output truncated]' : ''}\n`
             }),
 
-            progress: () => ({ phase: payload.phase, phaseDetail: payload.detail, error: null, done: null }),
+            progress: () => ({
+                phase: payload.phase,
+                phaseDetail: payload.detail,
+                // Sent once, with the re-signing phase — the first moment
+                // the service knows what it is holding, which is as soon as
+                // the download finishes. Every other progress message leaves
+                // what was found in place.
+                identity: payload.identity || store.get().identity,
+                error: null,
+                done: null
+            }),
 
             done: () => ({ phase: null, phaseDetail: null, done: payload, error: null }),
 
-            error: () => ({
-                phase: null,
-                relayBusy: false,
-                uploading: null,
-                error: {
-                    title: EXPLANATIONS[payload.code] || 'Failed.',
-                    detail: payload.message || '',
-                    remedy: payload.remedy || null
+            error: () => {
+                // Before pairing, the PIN field is the only thing on screen —
+                // the outcome panel that shows failures is not rendered yet.
+                // So a refusal that arrives now is said there or nowhere, and
+                // one does arrive here: a lockout, which the service reports
+                // as an error rather than a refused hello. The PIN is left
+                // alone, because being locked out says nothing about whether
+                // it was the right one.
+                if (!store.get().paired) {
+                    return {
+                        pending: '',
+                        restoring: false,
+                        pinError: payload.message || EXPLANATIONS[payload.code] || 'Refused.'
+                    };
                 }
-            })
+
+                return {
+                    phase: null,
+                    relayBusy: false,
+                    uploading: null,
+                    error: {
+                        title: EXPLANATIONS[payload.code] || 'Failed.',
+                        detail: payload.message || '',
+                        remedy: payload.remedy || null
+                    }
+                };
+            }
         };
 
         const reaction = reactions[type];
@@ -180,19 +273,49 @@ const value = (id) => {
 };
 
 const beginInstall = (source, reference) => {
-    store.update({ error: null, done: null, phase: 'probing' });
+    // The identity goes with it: whatever is on screen belongs to the last
+    // install, and leaving it there would put one app's icon above another
+    // app's progress bar for the four seconds before the service answers.
+    store.update({ error: null, done: null, phase: 'probing', identity: null });
     send(Send.install, { source, ref: reference });
+};
+
+/**
+ * Takes a file the person picked, and opens it.
+ *
+ * Reading the archive is what turns `download (2).wgt` back into the
+ * application inside it, and it happens now rather than after the upload
+ * because the whole value of it is being able to see what this is *before*
+ * spending a minute of wifi on it. It is allowed to come back with nothing —
+ * see core/package.js — in which case the filename stands as it always did.
+ */
+const chooseFile = async (file) => {
+    store.update({ file, identity: null, reading: Boolean(file), error: null, done: null });
+
+    if (!file) return;
+
+    const app = await readPackage(file);
+
+    // Somebody may have chosen a different file while this one was being
+    // read. Whichever is in the well now is the one the card describes.
+    if (store.get().file !== file) return;
+
+    store.update({ identity: app, reading: false });
 };
 
 delegate({
     // The PIN submits itself on the sixth digit: asking someone to press a
     // button after typing exactly six digits is a step that earns nothing.
     pin: (element) => {
-        const digits = element.value.replace(/\D/g, '').slice(0, 6);
+        const digits = element.value.replace(/\D/g, '').slice(0, DIGITS);
         element.value = digits;
-        store.update({ pin: digits, pinError: null });
+        const complete = digits.length === DIGITS;
 
-        if (digits.length === 6) send(Send.hello, { pin: digits });
+        // Typed, so `restoring` is false and a refusal reads as a mistyped
+        // code rather than as a television that has restarted.
+        store.update({ pin: digits, pinError: null, restoring: false, pending: complete ? digits : '' });
+
+        if (complete) send(Send.hello, { pin: digits });
     },
 
     'catalog:refresh': () => send(Send.catalog, { refresh: true }),
@@ -200,7 +323,7 @@ delegate({
     'install:github': () => value('gh') && beginInstall('github', value('gh')),
     'install:url': () => value('url') && beginInstall('url', value('url')),
 
-    file: (element) => store.update({ file: element.files[0] || null, error: null, done: null }),
+    file: (element) => chooseFile(element.files[0] || null),
 
     upload: async () => {
         const { file, pin } = store.get();
@@ -268,7 +391,8 @@ delegate({
 ['dragover', 'drop'].forEach((name) => document.addEventListener(name, (event) => {
     event.preventDefault();
     if (name === 'drop' && event.dataTransfer.files.length) {
-        store.update({ tab: 'upload', file: event.dataTransfer.files[0] });
+        store.update({ tab: 'upload' });
+        chooseFile(event.dataTransfer.files[0]);
     }
 }));
 

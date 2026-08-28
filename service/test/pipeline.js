@@ -79,6 +79,7 @@ const run = async () => {
     // --- the happy path, and the order of its steps ----------------------
     {
         const phases = [];
+        const announced = [];
         const store = createStore({ installing: false, catalog: [] });
 
         // Certificates, because there is no install without them any more:
@@ -91,8 +92,13 @@ const run = async () => {
         });
 
         const outcome = await install(
-            { source: 'upload', reference: 'tizenhomebrew.wgt', upload: realPackage },
-            (phase) => phases.push(phase)
+            // With its icon in it: the identity this announces is what a phone
+            // draws a card from, and half of that card is the picture.
+            { source: 'upload', reference: 'tizenhomebrew.wgt', upload: fixture.wgtWithIcon() },
+            (phase, _detail, extra) => {
+                phases.push(phase);
+                if (extra && extra.identity) announced.push([phase, extra.identity]);
+            }
         );
 
         check('an upload installs end to end',
@@ -100,6 +106,30 @@ const run = async () => {
         check('the steps run in order',
             phases.join(' → ') === 'probing → fetching → resigning → staging → installing', phases.join(' → '));
         check('the store is released afterwards', store.select('installing') === false, 'still marked installing');
+
+        // Whatever asked for the install has had nothing but the reference it
+        // typed up to this point. The identity is what lets a phone stop
+        // showing a filename and start showing the application — see
+        // install/preview.js — and it has to arrive while the install is still
+        // running, not with the outcome.
+        //
+        // With re-signing, specifically: that is the first phase after the
+        // download, and the two steps after it are the slow ones. Announcing
+        // any later means sitting through them looking at a filename, which is
+        // where this used to be.
+        check('the package announces what it is, once, as it is signed',
+            announced.length === 1 &&
+            announced[0][0] === 'resigning' &&
+            announced[0][1].packageId === 'GJBBYNLkgP' &&
+            announced[0][1].name === 'Tizen Homebrew',
+            JSON.stringify(announced));
+
+        // And it carries the application's own icon, pulled out of the same
+        // archive — the whole reason the phone can show the app rather than
+        // the name of the file it arrived in.
+        check('with the icon out of the archive on it',
+            String(announced[0][1].icon || '').startsWith('data:image/png;base64,'),
+            String(announced[0][1].icon).slice(0, 40));
     }
 
     // --- one at a time ----------------------------------------------------
@@ -131,14 +161,27 @@ const run = async () => {
 
     // --- Tizen 7 without certificates -------------------------------------
     {
+        const announced = [];
         const store = createStore({ installing: false, catalog: [] });
         const { install } = createInstaller({
             sdb: fakeSdb(), device: fakeDevice({ needsResign: true }), config: fakeConfig(),
             resigner: () => Promise.reject(new Error('unreachable')), store
         });
 
-        const refused = await install({ source: 'upload', upload: realPackage }).catch((e) => e);
+        const refused = await install(
+            { source: 'upload', upload: realPackage },
+            (phase, _detail, extra) => { if (extra && extra.identity) announced.push([phase, extra.identity]); }
+        ).catch((e) => e);
+
         check('a Tizen 7 set without certificates is refused', refused.code === 'certsMissing', String(refused.code));
+
+        // The announcement is made before the certificate check rather than
+        // after it, so a refusal names the application it refused rather than
+        // the file it happened to arrive in.
+        check('and the package still said what it was first',
+            announced.length === 1 && announced[0][0] === 'resigning' &&
+            announced[0][1].name === 'Tizen Homebrew',
+            JSON.stringify(announced));
     }
 
     // --- a rejected certificate is discarded ------------------------------

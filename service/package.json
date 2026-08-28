@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node build.js",
     "start": "node src/main.js",
-    "test": "node test/run.js && node test/relay.js && node test/lockout.js && node test/pipeline.js && node test/resign.js && node test/verdicts.js && node test/log.js",
+    "test": "node test/run.js && node test/relay.js && node test/lockout.js && node test/pipeline.js && node test/preview.js && node test/resign.js && node test/verdicts.js && node test/updates.js && node test/log.js",
     "check": "node check-syntax.js dist/index.js"
   },
   "dependencies": {

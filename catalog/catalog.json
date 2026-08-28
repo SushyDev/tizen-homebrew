@@ -1,9 +1,17 @@
 {
   "apps": [
     {
+      "id": "homebrew",
+      "name": "Tizen Homebrew",
+      "description": "This app. Updates itself.",
+      "packageId": "GJBBYNLkgP",
+      "source": { "type": "github", "ref": "SushyDev/tizen-homebrew" }
+    },
+    {
       "id": "youtube",
       "name": "YouTube",
       "description": "YouTube for Tizen",
+      "packageId": "tUb3Xq7Lm9",
       "source": { "type": "github", "ref": "SushyDev/tizen-youtube" }
     }
   ]

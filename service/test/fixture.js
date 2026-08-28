@@ -16,6 +16,7 @@
 // asserts on is the id the app actually installs under. Change the package id
 // in config.xml and this test is what tells you.
 
+const { deflateRawSync } = require('zlib');
 const { readFileSync } = require('fs');
 const { join } = require('path');
 
@@ -40,53 +41,84 @@ const crc32 = (buffer) => {
 };
 
 /**
- * Packs one file into a zip, stored rather than deflated.
+ * Packs files into a zip: header, bytes, central directory, end record.
  *
- * Stored is what a .wgt uses for small manifests anyway, and it keeps this
- * readable: header, bytes, central directory, end record, in that order and
- * nothing else.
+ * Entries are `{ name, contents, deflate }`. Stored is what a .wgt uses for
+ * small manifests anyway and keeps this readable, but a real one deflates
+ * most of what it carries — and the manifest reader has to walk *past* those
+ * entries to find the one it wants, which only a deflated fixture tests.
  */
-const zip = (name, contents) => {
-    const filename = Buffer.from(name, 'utf8');
-    const sum = crc32(contents);
+const zipAll = (entries) => {
+    const bodies = [];
+    const directory = [];
+    let at = 0;
 
-    const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0);   // local file header
-    local.writeUInt16LE(20, 4);           // version needed
-    local.writeUInt16LE(0, 6);            // flags
-    local.writeUInt16LE(0, 8);            // stored
-    local.writeUInt32LE(sum, 14);
-    local.writeUInt32LE(contents.length, 18);
-    local.writeUInt32LE(contents.length, 22);
-    local.writeUInt16LE(filename.length, 26);
+    entries.forEach(({ name, contents, deflate = false }) => {
+        const filename = Buffer.from(name, 'utf8');
+        const stored = deflate ? deflateRawSync(contents) : contents;
+        const sum = crc32(contents);
 
-    const central = Buffer.alloc(46);
-    central.writeUInt32LE(0x02014b50, 0); // central directory header
-    central.writeUInt16LE(20, 4);         // version made by
-    central.writeUInt16LE(20, 6);         // version needed
-    central.writeUInt16LE(0, 10);         // stored
-    central.writeUInt32LE(sum, 16);
-    central.writeUInt32LE(contents.length, 20);
-    central.writeUInt32LE(contents.length, 24);
-    central.writeUInt16LE(filename.length, 28);
+        const local = Buffer.alloc(30);
+        local.writeUInt32LE(0x04034b50, 0);   // local file header
+        local.writeUInt16LE(20, 4);           // version needed
+        local.writeUInt16LE(0, 6);            // flags
+        local.writeUInt16LE(deflate ? 8 : 0, 8);
+        local.writeUInt32LE(sum, 14);
+        local.writeUInt32LE(stored.length, 18);
+        local.writeUInt32LE(contents.length, 22);
+        local.writeUInt16LE(filename.length, 26);
 
-    const centralAt = local.length + filename.length + contents.length;
-    const centralSize = central.length + filename.length;
+        const central = Buffer.alloc(46);
+        central.writeUInt32LE(0x02014b50, 0); // central directory header
+        central.writeUInt16LE(20, 4);         // version made by
+        central.writeUInt16LE(20, 6);         // version needed
+        central.writeUInt16LE(deflate ? 8 : 0, 10);
+        central.writeUInt32LE(sum, 16);
+        central.writeUInt32LE(stored.length, 20);
+        central.writeUInt32LE(contents.length, 24);
+        central.writeUInt16LE(filename.length, 28);
+        central.writeUInt32LE(at, 42);        // where its local header is
+
+        bodies.push(local, filename, stored);
+        directory.push(central, filename);
+
+        at += local.length + filename.length + stored.length;
+    });
+
+    const central = Buffer.concat(directory);
 
     const end = Buffer.alloc(22);
     end.writeUInt32LE(0x06054b50, 0);     // end of central directory
-    end.writeUInt16LE(1, 8);              // entries on this disk
-    end.writeUInt16LE(1, 10);             // entries total
-    end.writeUInt32LE(centralSize, 12);
-    end.writeUInt32LE(centralAt, 16);
+    end.writeUInt16LE(entries.length, 8); // entries on this disk
+    end.writeUInt16LE(entries.length, 10);// entries total
+    end.writeUInt32LE(central.length, 12);
+    end.writeUInt32LE(at, 16);
 
-    return Buffer.concat([local, filename, contents, central, filename, end]);
+    return Buffer.concat([Buffer.concat(bodies), central, end]);
 };
+
+const zip = (name, contents) => zipAll([{ name, contents }]);
+
+/** A 1×1 PNG. The smallest thing that is genuinely a picture. */
+const PIXEL = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64');
 
 /** The application's own package, as bytes. */
 const wgt = () => zip('config.xml', readFileSync(join(__dirname, '..', '..', 'config.xml')));
 
+/**
+ * The same, with the icon its manifest names actually in it.
+ *
+ * Shaped like a real one: the manifest deflated and the picture stored, which
+ * is what a packaging tool does — PNG does not compress twice.
+ */
+const wgtWithIcon = () => zipAll([
+    { name: 'config.xml', contents: readFileSync(join(__dirname, '..', '..', 'config.xml')), deflate: true },
+    { name: 'icon.png', contents: PIXEL }
+]);
+
 /** Anything that is definitely not a Tizen package. */
 const notAPackage = () => zip('readme.txt', Buffer.from('not a package', 'utf8'));
 
-module.exports = { wgt, notAPackage, zip, crc32 };
+module.exports = { wgt, wgtWithIcon, notAPackage, zip, zipAll, crc32, PIXEL };

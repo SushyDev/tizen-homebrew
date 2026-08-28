@@ -33,31 +33,42 @@ const withinLimit = (archive, description) => {
 };
 
 /**
- * The newest release asset for `owner/repo`.
+ * The newest published release of `owner/repo`, as GitHub describes it.
  *
  * Only public repositories work: the call is unauthenticated, so a private
  * repository is indistinguishable from a missing one — GitHub answers 404 for
  * both, and saying so is more useful than "not found".
+ *
+ * Drafts and prereleases are not it — `releases/latest` skips both. That is
+ * what makes a release built by CI invisible until a person publishes the
+ * draft, which is the one manual step in shipping one.
+ *
+ * Separate from the download below because it answers a second question as
+ * well: `install/updates.js` asks what version an app is at without wanting
+ * the twenty megabytes that go with it.
  */
+const latestRelease = async (repo, log) => {
+    if (!OWNER_REPO.test(repo)) throw rejected('badMessage', `"${repo}" is not an owner/repo reference.`);
+
+    reporter(log).info(`asking github for the latest release of ${repo}`);
+
+    try {
+        return await getJson(`https://api.github.com/repos/${repo}/releases/latest`, {
+            headers: { 'user-agent': USER_AGENT, accept: 'application/vnd.github+json' }
+        });
+    } catch (error) {
+        if (error.status === 404) {
+            throw rejected('notFound', `${repo} has no published releases, or is private.`);
+        }
+        throw rejected('downloadFailed', error.message);
+    }
+};
+
+/** The package in that release, downloaded. */
 const fromGitHub = async (repo, log) => {
     const say = reporter(log);
 
-    if (!OWNER_REPO.test(repo)) throw rejected('badMessage', `"${repo}" is not an owner/repo reference.`);
-
-    say.info(`asking github for the latest release of ${repo}`);
-
-    const release = await (async () => {
-        try {
-            return await getJson(`https://api.github.com/repos/${repo}/releases/latest`, {
-                headers: { 'user-agent': USER_AGENT, accept: 'application/vnd.github+json' }
-            });
-        } catch (error) {
-            if (error.status === 404) {
-                throw rejected('notFound', `${repo} has no published releases, or is private.`);
-            }
-            throw rejected('downloadFailed', error.message);
-        }
-    })();
+    const release = await latestRelease(repo, log);
 
     const asset = (release.assets || []).find((candidate) => PACKAGE_SUFFIX.test(candidate.name));
 
@@ -121,4 +132,4 @@ const resolve = async ({ source, reference, catalog = [], upload = null, log = n
     }
 };
 
-module.exports = { resolve, MAX_PACKAGE };
+module.exports = { resolve, latestRelease, MAX_PACKAGE };

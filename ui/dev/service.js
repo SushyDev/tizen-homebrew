@@ -73,7 +73,7 @@ const boot = () => {
     log.ok('svc', 'startup finished in 312ms');
     log.info('dev', 'tizen 6.5');
     log.ok('sdb', 'loopback 127.0.0.1:26101 answered — this TV can install its own apps');
-    log.info('cat', '3 apps from the cache, 41m old');
+    log.info('cat', '4 apps from the cache, 41m old');
 };
 
 // ── The device, and what it has to offer ─────────────────────────────────
@@ -87,12 +87,48 @@ const DEVICE = {
     hasCertificates: true
 };
 
+// ── What the apps look like ──────────────────────────────────────────────
+//
+// Real artwork comes from two places — a catalogue app's logo.png in its own
+// repository, and the icon inside a package the service opened. Neither is
+// reachable here: there is no repository to fetch from and no .wgt on disk to
+// unzip. So these are drawn instead, as a gradient with a letter on it, which
+// is enough to answer the only question the harness is for — does a list of
+// tiles hold together, and does the artwork sit in its frame properly.
+//
+// Base64 rather than a raw SVG data URI: the markup contains `#` in every
+// colour, and a `#` in a URI starts a fragment.
+const artwork = (letter, top, bottom) => `data:image/svg+xml;base64,${Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">' +
+    `<stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bottom}"/>` +
+    '</linearGradient></defs>' +
+    '<rect width="64" height="64" fill="url(#g)"/>' +
+    '<text x="32" y="45" text-anchor="middle" fill="#ffffff" font-weight="700" ' +
+    `font-size="36" font-family="Helvetica,Arial,sans-serif">${letter}</text></svg>`
+).toString('base64')}`;
+
 const CATALOG = [
+    {
+        // The channel itself, which is in its own catalogue so a television
+        // can carry its own next version to itself. No version declared, for
+        // the same reason the real entry declares none: the release is what
+        // moves, and it is asked about rather than written down.
+        id: 'homebrew',
+        name: 'Tizen Homebrew',
+        version: null,
+        description: 'This app. Updates itself.',
+        packageId: 'GJBBYNLkgP',
+        icon: artwork('H', '#7fe3ff', '#0a5f80'),
+        source: { type: 'github', ref: 'SushyDev/tizen-homebrew' }
+    },
     {
         id: 'tube',
         name: 'YouTube',
         version: '0.1.0',
         description: 'YouTube without the advertisements',
+        icon: artwork('Y', '#ff4d4d', '#9b0000'),
+        packageId: 'tUb3Xq7Lm9',
         source: { type: 'github', ref: 'SushyDev/tube' }
     },
     {
@@ -100,9 +136,14 @@ const CATALOG = [
         name: 'Jellyfin',
         version: '10.9.1',
         description: 'Your own media server, on the television',
+        icon: artwork('J', '#aa5cd6', '#00a4dc'),
         source: { type: 'github', ref: 'jellyfin/jellyfin-tizen' }
     },
     {
+        // Deliberately without artwork. A catalogue logo is guessed rather
+        // than declared — logo.png in the app's own repository — so an app
+        // that has none is the ordinary case, and the row that falls back to
+        // a monogram needs looking at as much as the two that do not.
         id: 'kodi',
         name: 'Kodi',
         version: '21.0',
@@ -110,6 +151,40 @@ const CATALOG = [
         source: { type: 'url', ref: 'https://example.invalid/Kodi.wgt' }
     }
 ];
+
+// The same list a moment later.
+//
+// The real service answers `getCatalog` twice: the rows, and then the rows
+// again with what this television is holding marked on them — see
+// install/updates.js, which asks the platform what is installed and GitHub
+// what has been released. One row comes back with an update on it, because
+// the lit "update" button is a state the app list exists to be able to show
+// and there is otherwise no way to look at it without a stale TV to hand.
+const UPDATED = CATALOG.map((app) => (app.id === 'homebrew'
+    ? { ...app, version: '0.2.0', installed: '0.1.0', update: true }
+    : app));
+
+// What the service reads out of a package sitting on the television's own
+// disk — see install/preview.js. The filenames below are what a browser would
+// have called the download; the identity is what the archive actually says.
+const PACKAGES = {
+    '/media/usb1/YouTube.wgt': {
+        packageId: 'tUb3Xq7Lm9', appId: 'tUb3Xq7Lm9.Tube', name: 'YouTube',
+        version: '0.1.0', isWgt: true, icon: artwork('Y', '#ff4d4d', '#9b0000')
+    },
+    '/media/usb1/Jellyfin.wgt': {
+        packageId: 'AprZAcqzcc', appId: 'AprZAcqzcc.Jellyfin', name: 'Jellyfin',
+        version: '10.9.1', isWgt: true, icon: artwork('J', '#aa5cd6', '#00a4dc')
+    },
+    // A package with no icon in it at all, which is legal and happens.
+    '/media/usb1/downloads/TizenHomebrew.wgt': {
+        packageId: 'GJBBYNLkgP', appId: 'GJBBYNLkgP.TizenHomebrew', name: 'Tizen Homebrew',
+        version: '0.1.0', isWgt: true, icon: null
+    }
+};
+
+const onStick = (name, path, size) =>
+    ({ name, path, isDirectory: false, size, identity: PACKAGES[path] || null });
 
 const DIRECTORY = {
     '/media': [
@@ -119,12 +194,12 @@ const DIRECTORY = {
     '/media/usb1': [
         { name: '..', path: '/media', isDirectory: true },
         { name: 'downloads', path: '/media/usb1/downloads', isDirectory: true },
-        { name: 'YouTube.wgt', path: '/media/usb1/YouTube.wgt', isDirectory: false },
-        { name: 'Jellyfin.wgt', path: '/media/usb1/Jellyfin.wgt', isDirectory: false }
+        onStick('YouTube.wgt', '/media/usb1/YouTube.wgt', 2528154),
+        onStick('Jellyfin.wgt', '/media/usb1/Jellyfin.wgt', 8912896)
     ],
     '/media/usb1/downloads': [
         { name: '..', path: '/media/usb1', isDirectory: true },
-        { name: 'TizenHomebrew.wgt', path: '/media/usb1/downloads/TizenHomebrew.wgt', isDirectory: false }
+        onStick('TizenHomebrew.wgt', '/media/usb1/downloads/TizenHomebrew.wgt', 58368)
     ]
 };
 
@@ -235,17 +310,50 @@ const conversation = (socket, say) => {
                 log.info('pkg', 'release v0.1.4 carries tube.wgt (2.41 MB)');
                 log.ok('pkg', 'got tube.wgt: 2.41 MB in 1.60s (1.51 MB/s)');
                 log.info('pkg', 'sha256 3f2a91c0d84b17e6…');
+                // The manifest is read the moment the bytes are in hand, which
+                // is what the next phase has an identity to send.
+                log.info('pkg', 'identified Tube 0.1.0 (tUb3Xq7Lm9, app tUb3Xq7Lm9.Tube, wgt)');
             },
             resigning: () => log.info('pkg', 'tizen 7 or newer — re-signing against this TV\'s own certificates'),
-            staging: () => {
-                log.info('pkg', 'identified Tube 0.1.0 (tUb3Xq7Lm9, app tUb3Xq7Lm9.Tube, wgt)');
-                log.ok('pkg', 'staged 2.41 MB to /home/owner/share/tmp/sdk_tools/package.wgt');
-            },
+            staging: () => log.ok('pkg', 'staged 2.41 MB to /home/owner/share/tmp/sdk_tools/package.wgt'),
             installing: () => log.info('sdb', 'shell:0 vd_appinstall tUb3Xq7Lm9 /home/owner/share/tmp/sdk_tools/package.wgt')
         };
 
+        // What the package turned out to be. The real pipeline learns this the
+        // moment the bytes are in hand and sends it with the re-signing phase
+        // — see install/pipeline.js — and the card that renders it is one of
+        // the screens this stand-in exists to make visible.
+        const identity = PACKAGES[ref] || (() => {
+            // UPDATED rather than CATALOG: same rows, and the versions are the
+            // ones the phone is showing by the time anything can be pressed.
+            const entry = UPDATED.filter((app) => app.id === ref)[0];
+
+            return entry
+                ? {
+                    packageId: entry.packageId || `${entry.id}Xq7Lm9`,
+                    appId: `${entry.packageId || `${entry.id}Xq7Lm9`}.${entry.name.replace(/\s/g, '')}`,
+                    name: entry.name,
+                    version: entry.version,
+                    isWgt: true,
+                    icon: entry.icon || null
+                }
+                : { packageId: 'pKg4Tz1Wv8', appId: null, name: String(ref).split('/').pop(),
+                    version: '1.0.0', isWgt: true, icon: null };
+        })();
+
         for (const [phase, detail, wait] of PHASES) {
-            send('progress', { phase, detail });
+            // What the package turned out to be goes with the re-signing
+            // phase, the first one after the download — see the real
+            // pipeline, which names the application in that phase's detail
+            // rather than repeating the reference somebody typed.
+            const announcing = phase === 'resigning';
+
+            send('progress', {
+                phase,
+                detail: announcing ? identity.name : detail,
+                identity: announcing ? identity : null
+            });
+
             if (narrate[phase]) narrate[phase]();
             await new Promise((resolve) => setTimeout(resolve, wait));
         }
@@ -267,7 +375,7 @@ const conversation = (socket, say) => {
             return fail(refused.code, refused.line, refused.remedy);
         }
 
-        const entry = CATALOG.filter((app) => app.id === ref)[0];
+        const entry = UPDATED.filter((app) => app.id === ref)[0];
 
         log.info('sdb', 'spend time for wgt injection: 4.19 sec');
         log.ok('sdb', 'vd_appinstall finished in 4.21s');
@@ -276,7 +384,7 @@ const conversation = (socket, say) => {
 
         send('done', {
             name: entry ? entry.name : String(ref).split('/').pop(),
-            packageId: entry ? `${entry.id}Xq7Lm9` : 'pKg4Tz1Wv8',
+            packageId: entry ? entry.packageId || `${entry.id}Xq7Lm9` : 'pKg4Tz1Wv8',
             version: entry ? entry.version : '1.0.0',
             source
         });
@@ -320,7 +428,18 @@ const conversation = (socket, say) => {
         },
 
         getState: () => send('state', DEVICE),
-        getCatalog: () => send('catalog', { entries: CATALOG, stale: false }),
+        getCatalog: async () => {
+            send('catalog', { entries: CATALOG, stale: false });
+
+            // Delayed for the same reason the real one is: it is waiting on
+            // GitHub, which is why it is a second message rather than a slower
+            // first one.
+            await new Promise((resolve) => setTimeout(resolve, 900));
+            log.info('cat', 'SushyDev/tizen-homebrew has released 0.2.0');
+            log.ok('cat', 'Tizen Homebrew 0.1.0 is installed and 0.2.0 is out');
+
+            send('catalog', { entries: UPDATED, stale: false });
+        },
         listDir: ({ path }) => send('dir', DIRECTORY[path] || DIRECTORY['/media']),
         install,
 

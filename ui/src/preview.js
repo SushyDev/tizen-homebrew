@@ -17,28 +17,72 @@ import * as tv from './views/television.js';
 // copy of any screen to drift out of date. The one thing it adds is the
 // television's frame, and that is not decoration — see below.
 
+// Stand-in artwork. There is no network here and no package to open, and what
+// needs looking at is whether a tile holds its frame and a row of them holds
+// together — not whose logo happens to be in it. One app is deliberately left
+// without any, because a catalogue logo is guessed rather than declared and
+// the monogram is the ordinary case.
+const artwork = (letter, top, bottom) => `data:image/svg+xml;base64,${btoa(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">' +
+    `<stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bottom}"/>` +
+    '</linearGradient></defs><rect width="64" height="64" fill="url(#g)"/>' +
+    '<text x="32" y="45" text-anchor="middle" fill="#ffffff" font-weight="700" ' +
+    `font-size="36" font-family="Helvetica,Arial,sans-serif">${letter}</text></svg>`
+)}`;
+
+const TUBE = artwork('Y', '#ff4d4d', '#9b0000');
+const JELLYFIN = artwork('J', '#aa5cd6', '#00a4dc');
+const HOMEBREW = artwork('H', '#7fe3ff', '#0a5f80');
+
+// What the service read out of the package it is installing: the same shape
+// whichever end read it — see install/preview.js and core/package.js.
+const IDENTITY = {
+    packageId: 'tUb3Xq7Lm9', appId: 'tUb3Xq7Lm9.Tube', name: 'YouTube',
+    version: '0.1.0', isWgt: true, icon: TUBE
+};
+
 const base = {
-    connection: 'connected', paired: true, pin: '', pinError: null, themeOn: true,
+    connection: 'connected', paired: true, pin: '', pinError: null, restoring: false, themeOn: true,
     device: { onTv: true, ready: true, platformVersion: '6.5' },
     catalog: [
-        { id: 'tube', name: 'YouTube', version: '0.1.0', description: 'YouTube without the advertisements', source: { type: 'github', ref: 'SushyDev/tube' } },
-        { id: 'jellyfin', name: 'Jellyfin', version: '10.9.1', description: 'Your own media server', source: { type: 'github', ref: 'jellyfin/jellyfin-tizen' } }
+        // The first row is the channel updating itself, which is the one state
+        // in this list that is not just a button: the version beside the name
+        // is what is on offer, the line under it is what would be replaced,
+        // and the lit button is the only one on the screen. See
+        // install/updates.js for the end that decides it.
+        { id: 'homebrew', name: 'Tizen Homebrew', version: '0.2.0', installed: '0.1.0', update: true, description: 'This app. Updates itself.', icon: HOMEBREW, source: { type: 'github', ref: 'SushyDev/tizen-homebrew' } },
+        { id: 'tube', name: 'YouTube', version: '0.1.0', description: 'YouTube without the advertisements', icon: TUBE, source: { type: 'github', ref: 'SushyDev/tube' } },
+        { id: 'jellyfin', name: 'Jellyfin', version: '10.9.1', description: 'Your own media server', icon: JELLYFIN, source: { type: 'github', ref: 'jellyfin/jellyfin-tizen' } },
+        { id: 'kodi', name: 'Kodi', version: '21.0', description: 'The media centre, ported', icon: null, source: { type: 'url', ref: 'https://example.invalid/Kodi.wgt' } }
     ],
     catalogStale: false, tab: 'catalog', github: '', url: '',
-    usb: [{ name: '..', path: '/media', isDirectory: true }, { name: 'YouTube.wgt', path: '/media/YouTube.wgt', isDirectory: false }],
-    usbPath: '/media/usb1', file: null, uploading: null,
+    usb: [
+        { name: '..', path: '/media', isDirectory: true },
+        { name: 'YouTube.wgt', path: '/media/usb1/YouTube.wgt', isDirectory: false, size: 2528154, identity: IDENTITY },
+        { name: 'download (2).wgt', path: '/media/usb1/download (2).wgt', isDirectory: false, size: 8912896, identity: null }
+    ],
+    usbPath: '/media/usb1', file: null, reading: false, uploading: null, identity: null,
     relayEnabled: true, relayBusy: false, relayOutput: '$ pkgcmd -l\npkgid [tUb3Xq7Lm9]\n',
     phase: null, phaseDetail: null, done: null, error: null
 };
 
 const scenes = [
     ['Pairing', { ...base, paired: false }],
+    ['Pairing · remembered', { ...base, paired: false, restoring: true }],
     ['Rejected', { ...base, paired: false, pinError: 'That PIN did not match.' }],
+    ['Rejected · remembered', { ...base, paired: false, pinError: 'The TV has restarted, so its PIN has changed.' }],
     ['Ready', base],
     ['Not ready', { ...base, device: { onTv: true, ready: false, reason: 'sdbUnreachable' } }],
-    ['Upload', { ...base, tab: 'upload', file: { name: 'TizenHomebrew.wgt', size: 57344 } }],
-    ['Installing', { ...base, phase: 'installing', phaseDetail: 'YouTube' }],
-    ['Installed', { ...base, done: { name: 'YouTube', packageId: 'tUb3Xq7Lm9', version: '0.1.0' } }],
+    // The three states a chosen file passes through: named by the browser,
+    // being read, and read. The middle one lasts about a tenth of a second on
+    // a phone and is still worth a scene — it is where the card first appears,
+    // and it must not appear as a jump.
+    ['Upload · chosen', { ...base, tab: 'upload', file: { name: 'download (2).wgt', size: 2528154 } }],
+    ['Upload · reading', { ...base, tab: 'upload', reading: true, file: { name: 'download (2).wgt', size: 2528154 } }],
+    ['Upload · read', { ...base, tab: 'upload', file: { name: 'download (2).wgt', size: 2528154 }, identity: IDENTITY }],
+    ['Installing', { ...base, phase: 'installing', phaseDetail: 'YouTube', identity: IDENTITY }],
+    ['Installed', { ...base, identity: IDENTITY, done: { name: 'YouTube', packageId: 'tUb3Xq7Lm9', version: '0.1.0' } }],
     // Three lines: what went wrong, what the television said, what to do. The
     // last is the one worth looking at — it wraps to four on a phone, and the
     // point of previewing it is that it has to stay readable there.
