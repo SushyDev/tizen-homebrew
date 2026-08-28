@@ -31,7 +31,8 @@
     "dev:service": "node service/src/main.js",
     "clean": "node tools/clean.js",
     "version": "node tools/version.js",
-    "version:check": "node tools/version.js --check"
+    "version:check": "node tools/version.js --check",
+    "version:set": "node tools/version.js --set"
   },
   "devDependencies": {
     "eslint": "^10.9.1",

@@ -39,7 +39,7 @@ const check = (name, ok, detail) => {
 // every version bump — which is precisely what a release is: `npm run version
 // -- 0.1.1`, commit, tag, and the release build stops on a test about icons.
 // The reader is what is being checked here, not the number it happens to find.
-const declared = /<widget\b[^>]*\bversion="([^"]*)"/
+const widgetVersion = /<widget\b[^>]*\bversion="([^"]*)"/
     .exec(readFileSync(join(__dirname, '..', '..', 'config.xml'), 'utf8'))[1];
 
 {
@@ -51,7 +51,7 @@ const declared = /<widget\b[^>]*\bversion="([^"]*)"/
     check('a package is read down to its name, version and id',
         described &&
         described.name === 'Tizen Homebrew' &&
-        described.version === declared &&
+        described.version === widgetVersion &&
         described.packageId === 'GJBBYNLkgP' &&
         described.appId === 'GJBBYNLkgP.TizenHomebrew',
         JSON.stringify(described && { ...described, icon: null }));

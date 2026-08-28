@@ -13,7 +13,7 @@
 # Publishing it is the last step, and the one that makes the catalogue offer
 # the update: `releases/latest` skips drafts and prereleases.
 #
-#   npm run version -- 1.2.0     # and commit
+#   npm run version:set 1.2.0    # and commit
 #   git tag v1.2.0 && git push origin v1.2.0
 #
 # Exactly one .wgt is attached: an entry is resolved to the first package asset
@@ -65,9 +65,16 @@ jobs:
           declared="$(node -p "require('./tizen.config.json').version")"
           if [ "$tagged" != "$declared" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match tizen.config.json, which says $declared."
-            echo "Run 'npm run version -- $tagged', commit, and re-tag."
+            echo "Run 'npm run version:set $tagged', commit, and re-tag."
             exit 1
           fi
+
+      # Every file that carries a version has to carry the same one. The
+      # check above only compares the tag against tizen.config.json, and it is
+      # the whole set that ends up in the package — a lockfile left a version
+      # behind by a bump is invisible until npm decides to care.
+      - name: Versions agree
+        run: npm run version:check
 
       - name: Build
         run: npm run build

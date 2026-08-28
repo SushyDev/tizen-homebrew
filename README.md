@@ -225,10 +225,10 @@ and the service bundle against Node 12.
 
 **Releasing.** Pushing a tag builds the widget and opens a draft release with
 it attached. Tag and version have to agree, and the workflow checks —
-`npm run version -- 1.2.0` sets it everywhere:
+`npm run version:set 1.2.0` sets it everywhere:
 
 ```sh
-npm run version -- 1.2.0     # and commit
+npm run version:set 1.2.0    # and commit
 git tag v1.2.0 && git push origin v1.2.0
 ```
 
