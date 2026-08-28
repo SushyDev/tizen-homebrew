@@ -12,6 +12,7 @@ const Inbound = {
     HELLO: 'hello',                 // { pin }
     GET_STATE: 'getState',          // -
     GET_CATALOG: 'getCatalog',      // { refresh? }
+    CHECK_UPDATES: 'checkUpdates',  // { id? }
     INSTALL: 'install',             // { source: 'catalog'|'github'|'url'|'file', ref }
     LIST_DIR: 'listDir',            // { path }
     SUBMIT_ACCESS_INFO: 'submitAccessInfo', // { accessToken, userId, email }
@@ -35,11 +36,13 @@ const Outbound = {
     RELAY_END: 'relayEnd'           // { id, output, truncated? }
 };
 
-// A catalogue may arrive twice for one request. The list itself is sent the
-// moment it is in hand; where the television is holding apps the catalogue
-// also lists, a second one follows with `installed` and `update` marked on
-// those rows — see install/updates.js, which spends a request per installed
-// app to learn it and must not hold up the first send to do it.
+// A CatalogEntry carries what the television knows about the app as well as
+// what the catalogue said about it: `installed` is the version on this set or
+// null, `available` the version a release would give it, `checked` whether
+// anybody has asked yet, and `update` whether the second is newer than the
+// first. Only the first of those is free — see install/updates.js — so
+// `checkUpdates` is what fills the rest in, for one entry or for all of them,
+// and answers with a fresh CATALOG.
 
 // An `identity` — on a progress message and on the packages in a directory
 // listing — is what `install/preview.js` read out of the archive itself:
@@ -134,6 +137,11 @@ function parse(raw) {
         if (typeof payload.ref !== 'string' || !payload.ref) {
             throw ProtocolError(ErrorCode.BAD_MESSAGE, 'Install ref must be a non-empty string.');
         }
+    }
+
+    if (msg.type === Inbound.CHECK_UPDATES && 'id' in payload && payload.id !== null &&
+        typeof payload.id !== 'string') {
+        throw ProtocolError(ErrorCode.BAD_MESSAGE, 'checkUpdates takes the id of one app, or nothing at all.');
     }
 
     if (msg.type === Inbound.LIST_DIR && typeof payload.path !== 'string') {

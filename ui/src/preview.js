@@ -45,17 +45,20 @@ const IDENTITY = {
 const base = {
     connection: 'connected', paired: true, pin: '', pinError: null, restoring: false, themeOn: true,
     device: { onTv: true, ready: true, platformVersion: '6.5' },
+    // Every state a catalogue row can be in, in the order they are worth
+    // looking at: an update waiting, an app that is here and current, one
+    // installed that nobody has checked yet, and one that is not here at all.
+    // Only the first two of those can be told apart by the button — the third
+    // is blocked for a different reason, and the line underneath is the only
+    // place that says so. See install/updates.js for which of these facts is
+    // free and which costs a request.
     catalog: [
-        // The first row is the channel updating itself, which is the one state
-        // in this list that is not just a button: the version beside the name
-        // is what is on offer, the line under it is what would be replaced,
-        // and the lit button is the only one on the screen. See
-        // install/updates.js for the end that decides it.
-        { id: 'homebrew', name: 'Tizen Homebrew', version: '0.2.0', installed: '0.1.0', update: true, description: 'This app. Updates itself.', icon: HOMEBREW, source: { type: 'github', ref: 'SushyDev/tizen-homebrew' } },
-        { id: 'tube', name: 'YouTube', version: '0.1.0', description: 'YouTube without the advertisements', icon: TUBE, source: { type: 'github', ref: 'SushyDev/tube' } },
-        { id: 'jellyfin', name: 'Jellyfin', version: '10.9.1', description: 'Your own media server', icon: JELLYFIN, source: { type: 'github', ref: 'jellyfin/jellyfin-tizen' } },
-        { id: 'kodi', name: 'Kodi', version: '21.0', description: 'The media centre, ported', icon: null, source: { type: 'url', ref: 'https://example.invalid/Kodi.wgt' } }
+        { id: 'homebrew', name: 'Tizen Homebrew', version: '0.2.0', installed: '0.1.0', available: '0.2.0', checked: true, update: true, description: 'This app. Updates itself.', icon: HOMEBREW, source: { type: 'github', ref: 'SushyDev/tizen-homebrew' } },
+        { id: 'tube', name: 'YouTube', version: '0.1.0', installed: '0.1.0', available: '0.1.0', checked: true, update: false, description: 'YouTube without the advertisements', icon: TUBE, source: { type: 'github', ref: 'SushyDev/tube' } },
+        { id: 'jellyfin', name: 'Jellyfin', version: null, installed: '10.9.1', available: null, checked: false, update: false, description: 'Your own media server', icon: JELLYFIN, source: { type: 'github', ref: 'jellyfin/jellyfin-tizen' } },
+        { id: 'kodi', name: 'Kodi', version: '21.0', installed: null, available: '21.0', checked: true, update: false, description: 'The media centre, ported', icon: null, source: { type: 'url', ref: 'https://example.invalid/Kodi.wgt' } }
     ],
+    checking: null,
     catalogStale: false, tab: 'catalog', github: '', url: '',
     usb: [
         { name: '..', path: '/media', isDirectory: true },
@@ -73,6 +76,9 @@ const scenes = [
     ['Rejected', { ...base, paired: false, pinError: 'That PIN did not match.' }],
     ['Rejected · remembered', { ...base, paired: false, pinError: 'The TV has restarted, so its PIN has changed.' }],
     ['Ready', base],
+    // Mid-check: every control that could start a second one is out, and the
+    // row being asked about says which it is.
+    ['Checking', { ...base, checking: 'jellyfin' }],
     ['Not ready', { ...base, device: { onTv: true, ready: false, reason: 'sdbUnreachable' } }],
     // The three states a chosen file passes through: named by the browser,
     // being read, and read. The middle one lasts about a tenth of a second on

@@ -74,11 +74,16 @@ The PIN changes every time the app is opened; the TV screen shows the current
 one. Your phone keeps the last one that worked, so reloading the page does not
 ask for it again — until the TV restarts and mints a new one.
 
-**Tizen Homebrew updates itself.** It is in its own catalogue, so when a newer
-release exists its row in **Apps** says *update* instead of *install*, with the
-version it would replace underneath. Pressing it is an ordinary install of an
-ordinary package that happens to be this one. From a working copy, over the
-LAN, there is still:
+**Updates.** The **Apps** tab knows what is already on the TV — every row
+that is installed says so, and at which version. Whether anything newer has
+been *released* is a request to GitHub per app, so it waits to be asked:
+**check** on one row, or **check all** under the list. An app with a newer
+release then says *update* instead of *install*, with the version it would
+replace underneath.
+
+Tizen Homebrew is in its own catalogue, so that is also how the channel
+updates itself. Pressing it is an ordinary install of an ordinary package that
+happens to be this one. From a working copy, over the LAN, there is still:
 
 ```sh
 npm run package && npm run push -- 192.168.2.9 <pin>
@@ -163,13 +168,15 @@ Pages. Adding an app is a commit there — no rebuild, nothing to reinstall.
 }
 ```
 
-**Updates.** `packageId` is the id an app installs under, and it is what turns
-an **install** row into an **update** one: the TV holds it against its own list
-of installed packages, and where it finds a match it asks GitHub what that app
-has released since. Newer by semver, and only strictly newer, lights the
-button. Tizen Homebrew is in its own catalogue, so the app list is also how the
-channel updates itself — and it costs one request per app you actually have,
-none for the rest.
+**Updates.** `packageId` is the id an app installs under, and it is what lets
+a row know it is already on the TV: the platform's own package list answers
+that for every app at once, locally, so the list draws with it and never waits.
+What an app has *released* is one GitHub request each, which a two-hundred-app
+catalogue cannot spend on the way to a screen — so that half is a button, three
+lookups at a time, cached for six hours, and it stops early if GitHub starts
+refusing. Newer by semver, and only strictly newer, lights **update**; an
+installed app with nothing newer gets a blocked one, and the line underneath
+says whether that is because it is current or because nobody has looked yet.
 
 A `github` app's logo is `logo.png` in the root of its own repository, guessed
 rather than declared — `icon` overrides it with an https URL. An app with
@@ -207,6 +214,7 @@ real WebSocket. Point it at hardware with `HOMEBREW_TV=192.168.2.9 npm run dev`.
 | `service/src/install/pipeline.js` | Install, six named steps |
 | `service/src/install/resign.js` | Re-signing for this television |
 | `service/src/install/updates.js` | What is installed, and what has been released since |
+| `service/src/install/versions.js` | Semver, to the extent a release tag has one |
 | `service/src/tv/sdb.js` | Loopback sdb with real timeouts |
 | `service/src/obs/log.js` | The log everything else writes to |
 

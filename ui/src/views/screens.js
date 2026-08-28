@@ -192,34 +192,75 @@ const section = (label, body, footer = '') => html`
     ${footer}
   </div>`;
 
-// The line under a catalogue app's name.
+// ── The catalogue ─────────────────────────────────────────────────────
 //
-// Normally what the app is. Where this television is already holding it and
-// something newer has been released since — `update`, decided by the service
-// in install/updates.js, which is the only end that has both versions — the
-// numbers are the more useful fact by a distance. The version beside the name
-// is the one on offer, so this is the one it would be replacing.
-const catalogued = (app) => (app.update
-    ? html`<span class="small truncate"><span class="mono">${app.installed}</span> installed</span>`
-    : html`<span class="small truncate">${app.description || app.source.ref}</span>`);
+// A row has to answer three things at a glance: is this app on the TV, what
+// version, and is there a newer one. The first two are free — the service
+// reads them off the television's own package list every time it sends the
+// catalogue. The third costs a request to GitHub per app, so it is not
+// asked for until somebody presses `check`; see install/updates.js for why
+// a two-hundred-app catalogue must not answer it on the way to the screen.
+//
+// So `checked` matters as much as `update` does. A row nobody has asked
+// about and a row whose app has no releases both have no update to offer,
+// and they mean entirely different things to the person looking at them.
 
-// An update is the one row in this list somebody came here to press, so it is
-// the one row that is lit. Everything else about it is the same install: the
-// same entry, resolved the same way, re-signed for this set like anything
-// else — including Tizen Homebrew updating itself, which is an ordinary
-// install of an app that happens to be this one.
+// The line under the name.
+const catalogued = (app) => {
+    if (!app.installed) return html`<span class="small truncate">${app.description || app.source.ref}</span>`;
+
+    // Installed, so the versions are the fact worth the line. The one on
+    // offer is beside the name already; this is the one it would replace.
+    const held = html`<span class="mono">${app.installed}</span>`;
+
+    if (app.update) {
+        return html`<span class="small truncate">${held} → <span class="mono ink">${app.available}</span></span>`;
+    }
+
+    return html`<span class="small truncate">${held} installed${app.checked
+        ? (app.available ? ' · up to date' : ' · no release found')
+        : ''}</span>`;
+};
+
+// What pressing the end of the row does.
+//
+// An app that is not here installs. An app that is here updates, and the
+// button is blocked until there is something to update to — which is a
+// different state from "no update exists" only in the line underneath, and
+// deliberately so: the button says what it would do, and the text says
+// whether it can.
+const action = (app) => (app.installed
+    ? html`<button class="btn ${app.update ? 'btn-signal' : 'btn-ghost'}"
+                   data-focus="app:${app.id}" data-on-click="install:catalog:${app.id}"
+                   ${app.update ? '' : 'disabled'}>update</button>`
+    : html`<button class="btn btn-ghost" data-focus="app:${app.id}"
+                   data-on-click="install:catalog:${app.id}">install</button>`);
+
+// One app's own check, for the row somebody is actually looking at. Only
+// where there is somewhere to ask: a `url` app is whatever the catalogue
+// says it is and no request would tell anybody more.
+const recheck = (app, checking) => (app.source.type !== 'github' ? '' : html`
+  <button class="btn btn-quiet" data-focus="check:${app.id}" data-on-click="check:${app.id}"
+          ${checking ? 'disabled' : ''}>${checking === app.id ? 'checking…' : 'check'}</button>`);
+
 const catalog = (state) => section('Available', state.catalog.length === 0
     ? html`<p class="small">Nothing listed yet. Use upload, github or url.</p>`
     : html`<div class="list">
         ${state.catalog.map((app) => html`
           <div class="row split">
             ${identity(app, catalogued(app))}
-            <button class="btn ${app.update ? 'btn-signal' : 'btn-ghost'}" data-focus="app:${app.id}"
-                    data-on-click="install:catalog:${app.id}">${app.update ? 'update' : 'install'}</button>
+            <span class="controls">
+              ${recheck(app, state.checking)}
+              ${action(app)}
+            </span>
           </div>`)}
       </div>`,
-    html`<button class="btn btn-ghost btn-start" data-focus="refresh"
-                 data-on-click="catalog:refresh">refresh</button>`);
+    html`<span class="controls">
+      <button class="btn btn-ghost" data-focus="refresh" data-on-click="catalog:refresh">refresh</button>
+      <button class="btn btn-ghost" data-focus="check-all" data-on-click="checkAll"
+              ${state.checking ? 'disabled' : ''}>${state.checking === 'all'
+        ? 'checking…' : 'check all'}</button>
+    </span>`);
 
 // What the well says once something has been dropped in it.
 //
