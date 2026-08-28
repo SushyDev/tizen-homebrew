@@ -105,13 +105,29 @@ const main = async () => {
 
     const result = await ask('POST', gather());
 
-    ui.ok('stored', result.device || 'an unnamed device');
+    // A pair can name several televisions, and which ones is the whole
+    // question when an install is refused — so all of them are printed.
+    const named = (result.devices && result.devices.length ? result.devices : [result.device])
+        .filter(Boolean);
+
+    ui.ok('stored', named.join(', ') || 'an unnamed device');
 
     if (result.matchesThisTv === false) {
-        ui.warn('these certificates name a different television — installs will be refused');
-        ui.note(ui.style.dim('  `npm run duid -- <tv-ip>` says which device this set is'));
+        // The television knows both halves of this — it read its own DUID off
+        // sdbd over loopback before answering — so both are named here. The
+        // alternative was sending somebody to `npm run duid`, which on a set
+        // pinned to loopback can only read the certificate back to them.
+        ui.warn(result.thisTv
+            ? `these certificates name ${named.join(', ') || 'nothing'}, but this television is ${result.thisTv} — installs will be refused`
+            : 'these certificates name a different television — installs will be refused');
+        ui.blank();
+        ui.note(ui.style.dim('  Mint a pair bound to this one and send it again:'));
+        ui.note(ui.style.dim(`    npm run mint -- ${ip} ${pin}`));
+        ui.note(ui.style.dim(`    npm run certs -- ${ip} <pin>`));
     } else {
-        ui.note(ui.style.dim('  every install from here on is re-signed for this television'));
+        ui.note(ui.style.dim(named.length > 1
+            ? `  every install from here on is re-signed for this television, one of the ${named.length} this pair covers`
+            : '  every install from here on is re-signed for this television'));
     }
 
     ui.blank();

@@ -90,6 +90,12 @@ const start = () => {
     // update button for the thing drawing it.
     const updates = createUpdates({ packages, log });
 
+    // Asking the set what it is holding takes six seconds on a television with
+    // three hundred packages on it, and every catalogue sent to a phone is
+    // marked with the answer. Asked for now, while nothing is waiting on it, so
+    // that the first phone to connect is not the one that pays for it.
+    updates.prime();
+
     log.on(Facility.CAT).info(`origin ${catalogUrl}${stored ? ' (from the stored configuration)' : ''}`);
     log.on(Facility.CFG).info(`cache ${catalogCache}`);
 
@@ -305,6 +311,10 @@ const start = () => {
                 (phase, detail) => phases.push(detail ? `${phase}: ${detail}` : phase)
             );
 
+            // Same reason as the socket's install path: the set is holding
+            // something new, and the next app list has to say so.
+            updates.changed();
+
             json(response, { ok: true, phases, ...outcome });
         } catch (error) {
             failure(response, 500, error.code || ErrorCode.INTERNAL, error.message, error.remedy);
@@ -346,7 +356,7 @@ const start = () => {
         // now rather than at the end of somebody's next install — and so the
         // device it names is read off the certificate itself rather than
         // believed from whoever sent it.
-        const { deviceOf, openPair } = require('./install/resign.js');
+        const { devicesOf, openPair } = require('./install/resign.js');
 
         const opened = (() => {
             try {
@@ -360,7 +370,11 @@ const start = () => {
             return failure(response, 400, ErrorCode.RESIGN_FAILED, opened.error.message);
         }
 
-        const device = deviceOf(opened.distributor);
+        // Every device it names, not the first: one distributor certificate
+        // covers a `--duidList`, and judging it by entry zero refused installs
+        // on televisions the pair was perfectly good for.
+        const devices = devicesOf(opened.distributor);
+        const device = devices[0] || null;
         const state = store.select('device');
         const here = state && state.duid;
 
@@ -369,16 +383,17 @@ const start = () => {
             distributorCert: pair.distributorCert,
             password: pair.password,
             certDuid: device,
+            certDuids: devices,
             certCreatedAt: new Date().toISOString()
         });
 
-        const mismatched = Boolean(device && here && device !== here);
+        const mismatched = Boolean(here && devices.length && devices.indexOf(here) === -1);
 
         log.on(Facility.CFG)[mismatched ? 'warn' : 'ok'](
-            `certificates stored for ${device || 'an unnamed device'}` +
+            `certificates stored for ${devices.join(', ') || 'an unnamed device'}` +
             (mismatched ? `, but this television is ${here} — installs will be refused` : ''));
 
-        json(response, { ok: true, device, matchesThisTv: !mismatched });
+        json(response, { ok: true, device, devices, matchesThisTv: !mismatched, thisTv: here || null });
     });
 
     router.on.delete('/certificates', (request, response) => {

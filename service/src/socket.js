@@ -131,11 +131,12 @@ const attach = ({ server, store, authorise, installer, catalog, updates, relay, 
 
             store.update({ catalog: result.entries, catalogStale: result.stale });
 
-            // Marked with what this television already has, which is a local
-            // question and free — see install/updates.js. What has been
-            // *released* is not free, so nothing here asks: the list draws
-            // immediately, and `checkUpdates` fills the versions in when
-            // somebody asks for them.
+            // Marked with what this television already has, which is answered
+            // from a kept listing rather than by asking the set — see the note
+            // on `holding` in install/updates.js, and do not make this await a
+            // fresh one. What has been *released* is not free either, so
+            // nothing here asks: the list draws immediately, and
+            // `checkUpdates` fills the versions in when somebody asks.
             //
             // The stored catalogue is left unmarked. What `sources.resolve`
             // needs from an entry is its id and its source, and neither is
@@ -178,6 +179,10 @@ const attach = ({ server, store, authorise, installer, catalog, updates, relay, 
                         identity: (extra && extra.identity) || null
                     })
                 );
+
+                // The set is now holding something it was not a moment ago,
+                // and the next app list has to say so.
+                updates.changed();
 
                 send(Outbound.DONE, outcome);
             } catch (error) {

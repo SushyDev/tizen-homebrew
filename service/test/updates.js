@@ -95,11 +95,30 @@ const INSTALLED = [
     { id: 'org.xbmc.kodi', name: 'Kodi', version: '20.2' }
 ];
 
-const fakePackages = (installed) => ({
-    list: () => (installed
-        ? Promise.resolve(installed)
-        : Promise.reject(Object.assign(new Error('Only available on a TV.'), { code: 'notOnTv' })))
-});
+/**
+ * A television, and how long it takes to say what is on it.
+ *
+ * `delay` and `calls` are the point of the whole fake. getPackagesInfo takes
+ * six seconds on a full set, and the app list is marked with its answer — so
+ * how often this is called, and whether anybody is made to wait for it, is the
+ * difference between a list that draws and a list that does not.
+ */
+const fakePackages = (installed, delay = 0) => {
+    const fake = {
+        calls: 0,
+        list: () => {
+            fake.calls += 1;
+
+            if (!installed) {
+                return Promise.reject(Object.assign(new Error('Only available on a TV.'), { code: 'notOnTv' }));
+            }
+
+            return new Promise((resolve) => setTimeout(() => resolve(installed), delay));
+        }
+    };
+
+    return fake;
+};
 
 /**
  * A GitHub that counts what it was asked and how many at once.
@@ -285,6 +304,102 @@ const run = async () => {
         check('and the list still comes back, just without the answers',
             list.length === CATALOG.length && of(list, 'homebrew').update === false,
             JSON.stringify(list.map((entry) => [entry.id, entry.checked])));
+    }
+
+    // --- the set's own listing, which is not free ------------------------
+    //
+    // These pin the fix for the bug that made the app list "unreliable": every
+    // catalogue sent to a phone was awaited on a six-second getPackagesInfo,
+    // and most phone sessions are shorter than six seconds, so the frame was
+    // written to a socket that had already gone.
+    {
+        const tv = fakePackages(INSTALLED, 40);
+        const updates = createUpdates({ packages: tv, latestRelease: fakeGitHub({}).latestRelease });
+
+        // The first read has nothing to go on and must wait for the real answer.
+        const first = await updates.mark(CATALOG);
+
+        check('the first marking asks the set what it is holding',
+            tv.calls === 1 && of(first, 'homebrew').installed === '0.1.0',
+            `${tv.calls} calls, ${JSON.stringify(of(first, 'homebrew'))}`);
+
+        // Every read after it is served from what was kept. This is the one
+        // that matters: it is the difference between a list that arrives now
+        // and a list that arrives after the phone has gone.
+        const began = Date.now();
+        const again = await updates.mark(CATALOG);
+        const waited = Date.now() - began;
+
+        check('and every marking after it is answered without asking again',
+            tv.calls === 1 && waited < 20 && of(again, 'homebrew').installed === '0.1.0',
+            `${tv.calls} calls, waited ${waited}ms`);
+
+        // Three phones asking at once is in the log this was found in, and
+        // three overlapping six-second calls is what it used to cost.
+        const busyTv = fakePackages(INSTALLED, 40);
+        const busy = createUpdates({ packages: busyTv, latestRelease: fakeGitHub({}).latestRelease });
+
+        const together = await Promise.all([busy.mark(CATALOG), busy.mark(CATALOG), busy.mark(CATALOG)]);
+
+        check('phones arriving together share one listing rather than starting three',
+            busyTv.calls === 1 && together.every((one) => of(one, 'homebrew').installed === '0.1.0'),
+            `${busyTv.calls} calls`);
+    }
+
+    {
+        // Priming is the whole reason the first phone does not pay: startup
+        // asks with nobody waiting, and the listing is there by the time one
+        // connects.
+        const tv = fakePackages(INSTALLED, 40);
+        const updates = createUpdates({ packages: tv, latestRelease: fakeGitHub({}).latestRelease });
+
+        updates.prime();
+        await new Promise((resolve) => setTimeout(resolve, 60));
+
+        const began = Date.now();
+        const list = await updates.mark(CATALOG);
+        const waited = Date.now() - began;
+
+        check('a primed listing means the first phone waits for nothing',
+            tv.calls === 1 && waited < 20 && of(list, 'homebrew').installed === '0.1.0',
+            `${tv.calls} calls, waited ${waited}ms`);
+    }
+
+    {
+        // An install changes what the set is holding, and the next list has to
+        // say so — but it still must not block while finding out.
+        const tv = fakePackages(INSTALLED, 40);
+        const updates = createUpdates({ packages: tv, latestRelease: fakeGitHub({}).latestRelease });
+
+        await updates.mark(CATALOG);
+        updates.changed();
+
+        const began = Date.now();
+        await updates.mark(CATALOG);
+        const waited = Date.now() - began;
+
+        check('an install re-asks the set without making the next list wait',
+            tv.calls === 2 && waited < 20,
+            `${tv.calls} calls, waited ${waited}ms`);
+    }
+
+    {
+        // A set that will not answer costs the version marks and nothing else
+        // — it must never be the reason a catalogue fails to arrive.
+        const refusing = {
+            calls: 0,
+            list: () => {
+                refusing.calls += 1;
+                return Promise.reject(Object.assign(new Error('getPackagesInfo timed out'), { code: 'internal' }));
+            }
+        };
+
+        const updates = createUpdates({ packages: refusing, latestRelease: fakeGitHub({}).latestRelease });
+        const list = await updates.mark(CATALOG);
+
+        check('a television that will not list still produces a catalogue',
+            list.length === CATALOG.length && list.every((entry) => entry.installed === null),
+            JSON.stringify(list.map((entry) => [entry.id, entry.installed])));
     }
 
     // Off a television — the development harness — nothing is installed, and
