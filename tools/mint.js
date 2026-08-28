@@ -6,15 +6,11 @@
 //   npm run mint -- --duid BDCPQZFMHIZII  when you already know
 //   npm run mint -- <tv-ip> <pin> --new-author   start the pair over
 //
-// Partner, not Public. config.xml declares
-// `http://developer.samsung.com/privilege/productinfo`, which is a
-// partner-level privilege, and a Public distributor certificate cannot carry
-// it: the television refuses the package with
-//
-//     install failed[118, -22], reason: Security error : :Invalid function parameter was given:<2>
-//
-// — which mentions neither privileges nor certificates. `--privilege Public`
-// is there for an app that does not need them.
+// Public, which is the level anybody can mint for themselves. The app claims
+// no privilege above it — see config.xml, where two Samsung ones were dropped
+// precisely so that stays true — and a certificate that reaches further than
+// the package needs is a certificate that has to be explained to everybody who
+// installs it. `--privilege Partner` is there if an app ever needs one.
 //
 // A second television does not need a second pair. One distributor
 // certificate can name several devices, and this adds to the list rather than
@@ -124,22 +120,31 @@ const main = async () => {
     };
 
     const [ip, pin] = args.filter((argument) => argument[0] !== '-');
-    const privilege = named('--privilege') || 'Partner';
+    const privilege = named('--privilege') || 'Public';
     const password = named('--password') || Math.random().toString(36).slice(2, 12);
 
     ui.heading('mint');
     ui.blank();
 
-    // Which television this pair will be for. Asking is the whole point: a
+    // Which televisions this pair will be for. Asking is the whole point: a
     // pair minted against the wrong device id signs packages that upload and
     // are then refused, with no message naming either.
-    const duid = named('--duid') || (ip ? await duidOf(ip, pin) : null);
+    //
+    // Several can be named at once, because collecting device ids is the part
+    // of setting up a fleet that costs a walk to each set — and every mint
+    // after the first is another sign-in.
+    const asked = named('--duid')
+        ? named('--duid').split(',').map((device) => device.trim()).filter(Boolean)
+        : (ip ? [await duidOf(ip, pin)].filter(Boolean) : []);
+
+    const duid = asked[0];
 
     if (!duid) {
         throw friendly(
             'Which television?\n\n' +
             '  npm run mint -- <tv-ip> <pin>        ask Tizen Homebrew on the TV\n' +
-            '  npm run mint -- --duid <DUID>        when you already know it\n\n' +
+            '  npm run mint -- --duid <DUID>        when you already know it\n' +
+            '  npm run mint -- --duid <A>,<B>,<C>   several at once\n\n' +
             '  `npm run duid -- <tv-ip> [pin]` prints it on its own.'
         );
     }
@@ -149,12 +154,15 @@ const main = async () => {
     const existing = certificates.locate();
     const covered = certificates.devicesIn(existing.distributor, existing.distributorPassword);
 
-    const devices = covered.indexOf(duid) === -1 ? covered.concat(duid) : covered;
+    const devices = asked.reduce(
+        (all, device) => (all.indexOf(device) === -1 ? all.concat(device) : all),
+        covered
+    );
 
     // Keeping the author is the default, and the reason is in the header.
     const keeping = !named('--new-author') && Boolean(existing.password) && existsSync(existing.author) && covered.length > 0;
 
-    ui.info('device', duid + (covered.indexOf(duid) === -1 ? '' : ' (already covered)'));
+    ui.info('adding', asked.map((device) => device + (covered.indexOf(device) === -1 ? '' : ' (already covered)')).join(', '));
     ui.info('covering', devices.join(', '));
     ui.info('author', keeping ? 'keeping the one on this machine' : 'minting a new one');
     ui.info('privilege', privilege);

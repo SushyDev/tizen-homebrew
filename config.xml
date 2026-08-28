@@ -9,13 +9,28 @@
     <icon src="icon.png"/>
     <name>Tizen Homebrew</name>
 
-    <!-- internet + network.public: reach the catalog origin and GitHub.
-         productinfo: read the platform version and device identity.
+    <!-- Every privilege here is public level, and that is a requirement rather
+         than a coincidence: a partner-level privilege can only be carried by a
+         partner-level distributor certificate, and a television refuses a
+         package whose certificate does not reach far enough with
+
+           install failed[118, -22], reason: Security error :
+             :Invalid function parameter was given:<2>
+
+         which names neither the privilege nor the certificate.
+
+         Two Samsung privileges used to be declared here and are gone:
+         network.public, because the service opens ordinary sockets from Node
+         rather than calling webapis.network; and productinfo, because the
+         platform version comes from tizen.systeminfo.getCapability, which is
+         core Tizen and needs nothing. Neither was ever called. They cost every
+         installation a partner certificate for capabilities this app does not
+         use.
+
+         internet: reach the catalog origin and GitHub.
          application.launch: start the background service from the UI page. -->
     <tizen:privilege name="http://tizen.org/privilege/internet"/>
-    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
     <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
-    <tizen:privilege name="http://developer.samsung.com/privilege/productinfo"/>
     <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
     <tizen:privilege name="http://tizen.org/privilege/unlimitedstorage"/>
     <!-- Listing installed packages. packagemanager.install would allow

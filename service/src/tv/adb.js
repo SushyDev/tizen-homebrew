@@ -91,32 +91,60 @@ class AdbStream extends Duplex {
         this._connection = connection;
         this._localId = localId;
         this._remoteId = -1;
-        this._pending = [];
+
+        // Writes waiting for their turn, and the callback of the one packet
+        // currently in flight. See `_flush`.
+        this._queue = [];
+        this._inFlight = null;
 
         // Bug 2: the original emitted this on the client but listened on the
         // stream, so queued writes were never flushed. Listening where it is
         // actually emitted is the whole fix.
-        this.once('open', () => {
-            const queued = this._pending;
-            this._pending = [];
-            queued.forEach(({ chunk, done }) => {
-                this._connection._send(COMMANDS.WRTE, this._localId, this._remoteId, chunk);
-                done();
-            });
-        });
+        this.once('open', () => this._flush());
     }
 
     localId() { return this._localId; }
     remoteId() { return this._remoteId; }
 
     _write(chunk, _encoding, done) {
-        if (this._remoteId === -1) {
-            this._pending.push({ chunk, done });
-            return;
-        }
+        this._queue.push({ chunk, done });
+        this._flush();
+    }
 
+    /**
+     * Sends the next packet, if the last one has been acknowledged.
+     *
+     * Bug 5, and the expensive one: ADB is a lock-step protocol. A sender may
+     * have exactly one WRTE outstanding per stream and must wait for the
+     * peer's OKAY before sending the next — this file already honours that in
+     * the other direction, answering every WRTE it receives with an OKAY
+     * "because the daemon waits for this before sending more".
+     *
+     * Going the other way it did not, and dismissed the incoming OKAYs as
+     * "flow control we do not need to act on". For a shell command, a handful
+     * of packets, nothing goes wrong. For a 2MB package — five hundred packets
+     * fired without pause — sdbd drops what it has no room for, and the file
+     * that lands is not the file that was sent. The install then fails with a
+     * signature error, because the signature is fine and the package is not.
+     */
+    _flush() {
+        if (this._remoteId === -1 || this._inFlight || this._queue.length === 0) return;
+
+        const { chunk, done } = this._queue.shift();
+
+        this._inFlight = done;
         this._connection._send(COMMANDS.WRTE, this._localId, this._remoteId, chunk);
-        done();
+    }
+
+    /** The peer has taken the packet in flight; release the writer and send on. */
+    _acknowledge() {
+        const done = this._inFlight;
+
+        this._inFlight = null;
+
+        if (done) done();
+
+        this._flush();
     }
 
     // Reading is driven by packets arriving, not by demand.
@@ -194,11 +222,15 @@ class AdbConnection extends EventEmitter {
             case COMMANDS.OKAY:
                 if (!stream) break;
 
-                // The first OKAY answers our OPEN and carries the remote id;
-                // later ones are flow control we do not need to act on.
+                // The first OKAY answers our OPEN and carries the remote id.
+                // Every later one is the daemon saying it has room for the
+                // next packet, which is the only thing that makes a large
+                // write arrive intact.
                 if (stream._remoteId === -1) {
                     stream._remoteId = packet.arg1;
                     stream.emit('open');
+                } else {
+                    stream._acknowledge();
                 }
                 break;
 

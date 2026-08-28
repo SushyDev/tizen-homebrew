@@ -28,11 +28,12 @@
 // from your phone.
 
 const { readFileSync, existsSync, statSync } = require('fs');
-const { join } = require('path');
+const { join, dirname } = require('path');
 const { networkInterfaces } = require('os');
 
 const ui = require('./ui.js');
 const { ROOT } = require('./config.js');
+const certificates = require('./certificates.js');
 const sdb = require('../service/src/tv/sdb.js');
 
 // Where packages are staged on the TV before vd_appinstall reads them. This is
@@ -264,9 +265,39 @@ async function main() {
             ui.ok('removed', 'the previously installed copy', Date.now() - removing);
         }
 
+        // The distributor profile, which the television validates the package's
+        // distributor certificate against. `mint` writes it beside the
+        // certificates; without it on the TV, a correctly signed package is
+        // refused with
+        //
+        //   install failed[118, -22], reason: Security error :
+        //     :Invalid function parameter was given:<2>
+        //
+        // naming neither the profile nor the certificate. It is easy to miss
+        // because a television that has ever been set up by another tool
+        // already has one, and everything works until the certificate changes.
+        const profile = join(dirname(certificates.locate().author), 'device-profile.xml');
+
+        if (existsSync(profile)) {
+            await push(session, `${STAGING_DIR}/device-profile.xml`, readFileSync(profile));
+            ui.ok('profile', 'device-profile.xml staged for this certificate');
+        } else {
+            ui.warn(`no device-profile.xml beside the certificates — the TV may refuse the package`);
+        }
+
         const file = join(ROOT, WGT);
         const buffer = readFileSync(file);
-        const remote = `${STAGING_DIR}/homebrew.wgt`;
+        // `package.wgt`, and the name is not free. vd_appinstall answers a path
+        // it does not like with
+        //
+        //   install failed[118, -22], reason: Security error :
+        //     :Invalid function parameter was given:<2>
+        //
+        // where <2> is that second argument — a message that reads like a
+        // problem with the certificate and is a problem with the filename.
+        // service/src/install/installer.js stages to the same name, and so
+        // does every other tool that installs this way.
+        const remote = `${STAGING_DIR}/package.wgt`;
         const started = Date.now();
 
         let lastShown = 0;
