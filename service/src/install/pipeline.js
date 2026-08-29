@@ -65,17 +65,23 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
             say.info(state.onTv
                 ? `television is tizen ${state.platformVersion || 'unknown'}` +
                   `${state.needsResign ? ', which requires re-signed packages' : ''}` +
-                  `, sdb ${state.ready ? 'reachable' : `unreachable (${state.sdbError || state.reason || 'unknown'})`}`
+                  `, sdb ${state.ready ? 'reachable' : `unreachable — ${state.sdbDetail || state.sdbError || state.reason || 'unknown'}`}`
                 : 'no television here — running as a development harness');
 
             // Off-TV this is a development harness, and there is nothing to
             // install onto; on a TV, an unreachable sdb means nothing can work.
             if (state.onTv && !state.ready) {
+                // The refusal carries what sdbd actually said. A person
+                // reading "set the developer host IP to 127.0.0.1" on a set
+                // where it is already 127.0.0.1 learns nothing and mistrusts
+                // the next message too, so the remedy comes after the fault
+                // and only as the thing that would explain it.
                 throw refuse(
                     state.reason === 'debugModeOff' ? 'debugModeOff' : 'sdbUnreachable',
-                    state.reason === 'debugModeOff'
-                        ? 'Developer Mode is off on this TV.'
-                        : 'This TV cannot reach its own sdb daemon. Set the developer host IP to 127.0.0.1 and restart the TV.'
+                    `${state.sdbDetail || `sdb was unreachable (${state.sdbError || state.reason || 'unknown'})`} ` +
+                    (state.reason === 'debugModeOff'
+                        ? 'Developer Mode is off in Apps › 12345 › Settings.'
+                        : 'If it stays this way, Host PC IP = 127.0.0.1 and a restart is what fixes a misconfigured one.')
                 );
             }
 

@@ -468,6 +468,28 @@ const watchReadiness = async () => {
     } catch (e) {
         // The log already says the service is unreachable.
     }
+
+    // The PIN is re-read here, not just once on the way in.
+    //
+    // It is regenerated every time the service starts and never persisted, so
+    // a service that restarts under a page which asked once leaves this screen
+    // displaying a code that no longer opens anything. Nothing about that looks
+    // wrong from here — readiness keeps polling, the log keeps filling — and
+    // the first sign of it is somebody typing the number on the screen, being
+    // told it is incorrect, and being locked out for five minutes after the
+    // fifth try. A reinstall restarts the service, so this is the ordinary
+    // case, not an edge one.
+    try {
+        const { pin } = await ask('/pin');
+
+        if (pin && pin !== store.get().pin) {
+            store.update({ pin });
+            say('the service restarted — this is its new pairing code', 'warn');
+        }
+    } catch (e) {
+        // Keep showing the last known code; the readiness poll above is what
+        // reports a service that has gone away.
+    }
 };
 
 const waitForService = async () => {
@@ -493,13 +515,21 @@ const waitForService = async () => {
         if (attempts === 1) say(`the service is not answering yet (${failure.message})`);
         if (attempts === 12) say('the service is slow to start', 'warn');
 
-        if (attempts >= 60) {
-            say(`gave up after ${attempts} attempts`, 'err');
-            say(`the background service never opened port ${PORT}`, 'err');
-            return;
+        if (attempts === 60) {
+            say(`nothing on port ${PORT} after 30s — the platform can be slow to start it`, 'warn');
+            say('still asking, every three seconds', 'warn');
         }
 
-        setTimeout(waitForService, 500);
+        // Slowing down, never stopping. This used to give up here and return,
+        // and the screen it left behind had no address and no pairing code on
+        // it for as long as the app stayed open — in front of a service that
+        // was answering fine. The platform's own service launch was measured
+        // at twenty-four seconds on this set against a thirty-second window,
+        // so the page announced "the background service never opened port
+        // 8091" and the port opened 286 milliseconds later. Nothing restarted
+        // the wait, because there was nothing left running to restart it:
+        // readiness polling only begins once this succeeds.
+        setTimeout(waitForService, attempts < 60 ? 500 : 3000);
     }
 };
 

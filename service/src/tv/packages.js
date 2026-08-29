@@ -1,6 +1,6 @@
 'use strict';
 
-// Installed packages, through the Tizen platform API.
+// Installed packages, read off the disk.
 //
 // Listing only. Removing one needs packagemanager.install, which requires a
 // platform-level certificate — signing with ours produces a package the TV
@@ -12,49 +12,91 @@
 // So uninstalling is done from the TV's own app list, and no code here
 // pretends otherwise.
 
-const onTv = typeof tizen !== 'undefined';
+const { readdir, readFile } = require('fs/promises');
+const { join } = require('path');
 
-// How long to wait for the set to say what is on it.
-//
-// getPackagesInfo takes no timeout of its own and neither of its callbacks is
-// guaranteed to fire. It is slow enough on a full television — six seconds for
-// three hundred packages, measured — that a caller cannot tell "slow" from
-// "never" by waiting a little longer, and a call that never came back would
-// wedge whatever awaited it for the life of the service. So it is given a
-// generous deadline and then abandoned.
-const LIST_TIMEOUT = 30000;
+const onTv = typeof tizen !== 'undefined';
 
 const offTv = () => Object.assign(new Error('Only available on a TV.'), { code: 'notOnTv' });
 
-/** Everything installed, as plain data. */
-const list = () => {
-    if (!onTv) return Promise.reject(offTv());
+// Where the platform unpacks what it installs: one directory per package,
+// named by package id — which is the key an app list matches on.
+const APPS_ROOT = '/opt/usr/apps';
 
-    return new Promise((resolve, reject) => {
-        const gaveUp = setTimeout(() => reject(Object.assign(
-            new Error(`The TV did not answer getPackagesInfo within ${LIST_TIMEOUT / 1000}s.`),
-            { code: 'internal' }
-        )), LIST_TIMEOUT);
+// The manifest inside a package that carries its version. A web app keeps one
+// where the runtime unpacked it; a native package keeps its own at the root.
+const MANIFESTS = ['res/wgt/config.xml', 'tizen-manifest.xml'];
 
-        // Whichever of the three lands first wins; the other two become no-ops
-        // on an already-settled promise.
-        const done = (finish) => (value) => {
-            clearTimeout(gaveUp);
-            finish(value);
-        };
-
-        tizen.package.getPackagesInfo(
-            done((packages) => resolve(packages.map((entry) => ({
-                id: entry.id,
-                name: entry.name,
-                version: entry.version,
-                totalSize: entry.totalSize,
-                lastModified: entry.lastModified ? new Date(entry.lastModified).toISOString() : null
-            })))),
-            done((error) => reject(Object.assign(new Error(`Could not list packages: ${error.message}`), { code: 'internal' })))
-        );
-    });
+const attribute = (xml, name) => {
+    const found = new RegExp(`<(?:widget|manifest)\\b[^>]*\\b${name}="([^"]*)"`).exec(xml);
+    return found ? found[1] : null;
 };
+
+const elementText = (xml, name) => {
+    const found = new RegExp(`<${name}\\b[^>]*>([^<]*)</${name}>`).exec(xml);
+    return found ? found[1].trim() : null;
+};
+
+/** What a package's own manifest says about it, or nulls when unreadable. */
+const describe = async (id) => {
+    for (const relative of MANIFESTS) {
+        try {
+            const xml = await readFile(join(APPS_ROOT, id, relative), 'utf8');
+            return { version: attribute(xml, 'version'), name: elementText(xml, 'name') };
+        } catch (e) {
+            // The next candidate, or nothing. Another app's directory is
+            // readable but its files are not, which is most of this set.
+        }
+    }
+
+    return { version: null, name: null };
+};
+
+/**
+ * Everything installed, read off the disk.
+ *
+ * Two other sources were tried on a QE65S93DAT and neither can be used.
+ *
+ * `tizen.package.getPackagesInfo` blocks the JS thread for about five minutes
+ * — not slowly, entirely: no callback, and not even the deadline that was
+ * meant to catch it, which is the tell. The service answers nothing for the
+ * duration while the port keeps accepting TCP, because the kernel does that
+ * without asking the process.
+ *
+ * `pkgcmd -l` over the TV's own sdb returns nothing, and it is the channel
+ * rather than the command: `shell:0` on that firmware carries output for
+ * Samsung's own commands — `getduid` and `vd_appinstall` both answer — and is
+ * mute for the rest. `pkgcmd -l; echo marker` came back empty, marker and all.
+ *
+ * A directory listing is neither. It is a local read of a path this service
+ * already reads out of, it cannot block, and the names it returns are already
+ * the ids to match on. A package whose manifest cannot be read still counts
+ * as installed with no version: knowing something is on the set is most of
+ * the value, and a missing version costs an update mark rather than a row.
+ */
+const listOnDisk = async () => {
+    // Asynchronous throughout, and that is not a style preference. A set holds
+    // three hundred packages, each of which is a directory read and up to two
+    // file reads; done synchronously that is six hundred blocking calls with
+    // the whole service stopped behind them, and the television's own page
+    // polls its log once a second. Every await here is a chance for that poll
+    // to be answered.
+    const names = await readdir(APPS_ROOT).catch(() => []);
+
+    const found = [];
+
+    // `.recovery` and `.pptestfw` sit alongside the real ones.
+    for (const id of names.filter((name) => name[0] !== '.')) {
+        const { version, name } = await describe(id);
+
+        found.push({ id, name: name || id, version, totalSize: null, lastModified: null });
+    }
+
+    return found;
+};
+
+/** Everything installed, as plain data. */
+const list = () => (onTv ? listOnDisk() : Promise.reject(offTv()));
 
 /**
  * Launches an installed app.

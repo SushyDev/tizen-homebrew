@@ -219,21 +219,38 @@ function connect(options) {
             finish(null, new Session(client));
         }
 
+        // What actually happened comes first, in the words the socket used.
+        // A cause is offered after it and phrased as something that produces
+        // this symptom, never as a finding: "the developer host IP is probably
+        // not 127.0.0.1" was printed at somebody who had set it to 127.0.0.1,
+        // eleven times in three minutes, because sdbd on these sets also drops
+        // connections for reasons of its own. The remedy was right often
+        // enough to be believed and wrong often enough to cost an evening.
         function onError(e) {
-            if (e && e.code === 'ECONNREFUSED') {
-                // sdbd is not listening: Developer Mode is off.
-                return finish(SdbError('sdbRefused', 'SDB refused the connection. Developer Mode is probably off.'), null);
+            const code = (e && e.code) || 'unknown';
+
+            if (code === 'ECONNREFUSED') {
+                return finish(SdbError('sdbRefused',
+                    `${host}:${SDB_PORT} refused the connection (ECONNREFUSED) — nothing is ` +
+                    'listening. Developer Mode being off leaves sdbd unstarted, which looks like this.'), null);
             }
-            if (e && e.code === 'ECONNRESET') {
-                // sdbd is listening but rejected us: the developer host IP is
-                // set to something other than this TV.
-                return finish(SdbError('sdbReset', 'SDB reset the connection. The developer host IP is probably not 127.0.0.1.'), null);
+
+            if (code === 'ECONNRESET') {
+                return finish(SdbError('sdbReset',
+                    `${host}:${SDB_PORT} accepted the connection and then reset it (ECONNRESET). ` +
+                    'sdbd resets a client whose address is not its developer host IP, and it also ' +
+                    'drops connections intermittently under no particular provocation.'), null);
             }
-            finish(SdbError('sdbError', `SDB connection error: ${e && e.message ? e.message : e}`), null);
+
+            finish(SdbError('sdbError',
+                `${host}:${SDB_PORT} connection error ${code}: ${(e && e.message) || e}`), null);
         }
 
         function onClose() {
-            finish(SdbError('sdbClosed', 'SDB closed the connection before the handshake completed. The developer host IP is probably not this machine.'), null);
+            finish(SdbError('sdbClosed',
+                `${host}:${SDB_PORT} closed the connection before the ADB handshake completed. ` +
+                'sdbd does this to a client whose address is not its developer host IP, and ' +
+                'intermittently to one whose address is.'), null);
         }
 
         // Resolve on the ADB handshake, not the TCP connect. sdbd accepts the

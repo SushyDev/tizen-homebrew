@@ -88,13 +88,27 @@ const start = () => {
     // newer since. Tizen Homebrew is one of them: the catalogue is how it
     // reaches its own next version, so the app list on a phone is also the
     // update button for the thing drawing it.
-    const updates = createUpdates({ packages, log });
+    const updates = createUpdates({ packages, log, config });
 
-    // Asking the set what it is holding takes six seconds on a television with
-    // three hundred packages on it, and every catalogue sent to a phone is
-    // marked with the answer. Asked for now, while nothing is waiting on it, so
-    // that the first phone to connect is not the one that pays for it.
-    updates.prime();
+    // There is no updates.prime() here, and that is load-bearing.
+    //
+    // Priming asks getPackagesInfo for the installed listing with nothing
+    // waiting on the answer, which is the right idea and, on a QE65S93DAT
+    // running Tizen 9.0, wedges the service. The bind succeeds — the port
+    // accepts TCP — and no HTTP request is ever answered again: neither
+    // callback fires, and neither does the thirty-second deadline in
+    // packages.js meant to catch exactly that. A timer that does not fire is
+    // a blocked JS thread, not a slow platform call.
+    //
+    // Established by installing it four times: at startup it lasted about
+    // twenty seconds, moved after the bind it answered nothing, removed the
+    // service ran clean for over twenty minutes, and restored it wedged again
+    // on the first boot. Asked for on demand — which is what installedNow()
+    // does — the same call is merely slow.
+    //
+    // The cost is that the first client pays the six seconds, which is the
+    // race the `holding` cache was written to remove. Priming needs to happen
+    // late enough that the platform is settled, not at startup.
 
     log.on(Facility.CAT).info(`origin ${catalogUrl}${stored ? ' (from the stored configuration)' : ''}`);
     log.on(Facility.CFG).info(`cache ${catalogCache}`);
@@ -145,11 +159,19 @@ const start = () => {
         if (state.ready) {
             log.on(Facility.SDB).ok(`loopback 127.0.0.1:${sdb.SDB_PORT} answered — this TV can install its own apps`);
         } else if (state.onTv) {
-            log.on(Facility.SDB).warn(`loopback 127.0.0.1:${sdb.SDB_PORT} is not usable (${state.sdbError || state.reason || 'unknown'})`);
-            dev.warn(state.reason === 'debugModeOff'
-                ? 'turn Developer Mode on in Apps › 12345 › Settings, then restart the TV'
-                : 'set Host PC IP to 127.0.0.1 in Apps › 12345 › Settings, then restart the TV');
-            dev.info('sdbd only reads that value at startup, which is why the restart is not optional');
+            // What sdbd did, in its own words, and then — separately, and as a
+            // condition rather than a finding — what would cause it. These used
+            // to be one warning that named a remedy: "set Host PC IP to
+            // 127.0.0.1" was printed at somebody who had set it to 127.0.0.1,
+            // every time a healthy set dropped a connection.
+            log.on(Facility.SDB).warn(state.sdbDetail
+                ? `loopback 127.0.0.1:${sdb.SDB_PORT} — ${state.sdbDetail}`
+                : `loopback 127.0.0.1:${sdb.SDB_PORT} is not usable (${state.sdbError || state.reason || 'unknown'})`);
+
+            dev.info(state.reason === 'debugModeOff'
+                ? 'if it stays this way: Developer Mode in Apps › 12345 › Settings, then restart the TV'
+                : 'if it stays this way: Host PC IP = 127.0.0.1 in Apps › 12345 › Settings, then restart ' +
+                  'the TV — sdbd reads that value only at startup');
         }
 
         return state;
@@ -157,7 +179,22 @@ const start = () => {
 
     const refreshDevice = async () => {
         const previous = store.select('device');
-        const state = await device.probe();
+        const first = await device.probe();
+
+        // A single refused connection is not a television that has stopped
+        // working, and saying so costs more than waiting fifteen seconds to be
+        // sure. sdbd on these sets drops the occasional connection for its own
+        // reasons; every one of those used to flip readiness, take the banner
+        // with it, and print "set Host PC IP to 127.0.0.1" at somebody who had
+        // already set it to 127.0.0.1 — eleven times in three minutes, on a
+        // set where nothing was wrong.
+        //
+        // So a demotion is confirmed before it is believed, and only a
+        // demotion: coming back is reported the moment it happens, because a
+        // television that answers is a television that answers.
+        const state = previous && previous.ready && !first.ready
+            ? await device.probe()
+            : first;
 
         store.update({ device: state });
 
@@ -260,11 +297,25 @@ const start = () => {
         });
     });
 
+    // Served from what the last refresh found, deliberately not by taking one.
+    //
+    // This used to call refreshDevice(), and refreshDevice() opens an sdb
+    // connection with a four-second deadline. The television's own page polls
+    // this every five seconds, so the set spent its life connecting to its own
+    // sdbd twelve times a minute on top of the fifteen-second sweep that was
+    // already doing it — enough for readiness to flap between "ready" and
+    // "not usable" while nothing about the television had changed, and enough
+    // to hold the thread long enough that a log poll on a one-second timer
+    // reported the service unreachable.
+    //
+    // The sweep owns refreshing. A reader gets the most recent answer, which
+    // is at most fifteen seconds old and is not worth an sdb handshake.
     router.on.get('/state', (request, response) => {
         if (!fromLoopback(request)) {
             return failure(response, 403, ErrorCode.UNAUTHORIZED, 'Only readable from the TV itself.');
         }
-        refreshDevice().then((state) => json(response, state));
+
+        json(response, store.select('device') || {});
     });
 
     const authorisedRead = (request, response, handle) => {
@@ -499,6 +550,25 @@ const start = () => {
         // systemd's last startup line, and the most useful one it prints: it
         // turns "that felt slow" into a number.
         svc.ok(`startup finished in ${took(recorded.uptime())}`);
+
+        // A pulse, so that a service which stops answering can be told apart
+        // from one that was never asked.
+        //
+        // The failure this exists for looks like a healthy set from outside:
+        // the port accepts TCP because the kernel does that on its own, while
+        // the JS thread is blocked and no request is ever answered. From a
+        // laptop it is indistinguishable from a service that never started,
+        // which cost most of an evening. A line that stops arriving dates the
+        // moment the thread stopped, and the line before it names what was in
+        // flight at the time.
+        //
+        // Every thirty seconds, at info: two lines a minute is cheap next to
+        // an unexplained silence, and the log is read by whoever is trying to
+        // work out why the television is not answering.
+        setInterval(
+            () => svc.info(`alive — ${took(recorded.uptime())}, ${(store.select('device') || {}).ready ? 'sdb ready' : 'sdb not ready'}`),
+            30000
+        );
     });
 
     require('./socket.js').attach({ server, store, secret, authorise, installer, catalog, updates, relay, refreshDevice, config, protocol, log });

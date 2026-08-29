@@ -37,16 +37,18 @@
          installation a partner certificate for capabilities this app does not
          use.
 
+         A third has now joined them: packagemanager.info. Installed packages
+         are read from /opt/usr/apps, one directory per package named by its
+         id, because the API that privilege exists for — getPackagesInfo —
+         blocks the service's thread for five minutes on Tizen 9. Nothing
+         calls tizen.package any more, so nothing needs to ask for it.
+
          internet: reach the catalog origin and GitHub.
          application.launch: start the background service from the UI page. -->
     <tizen:privilege name="http://tizen.org/privilege/internet"/>
     <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
     <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
     <tizen:privilege name="http://tizen.org/privilege/unlimitedstorage"/>
-    <!-- Listing installed packages. packagemanager.install would allow
-         removing them too, but it needs a platform-level certificate and the
-         TV rejects the package outright with MISMATCHED_PRIVILEGE_LEVEL. -->
-    <tizen:privilege name="http://tizen.org/privilege/packagemanager.info"/>
 
     <tizen:profile name="tv-samsung"/>
 

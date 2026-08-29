@@ -39,6 +39,22 @@ const INSTALLED_TTL = 60 * 1000;
 // a slow app list will find it.
 const SLOW_LIST = 1000;
 
+// What stands in for the version of a package whose own manifest could not be
+// read.
+//
+// It has to be truthy. The app list uses one field for two questions — is this
+// on the set, and at which version — so a null makes a package that is plainly
+// installed render as though it were not. That is not hypothetical: this
+// service can list /opt/usr/apps but SMACK does not let it read inside another
+// app's directory, so every third-party app on a set comes back without a
+// version, including ones installed from this very catalogue. YouTube was
+// sitting on the television, in the listing, and showing an Install button.
+//
+// Nothing is claimed by it: `versions.compare` answers null rather than a
+// guess when either side is not a version, so an unknown version offers no
+// update instead of a wrong one.
+const UNKNOWN_VERSION = '?';
+
 // How many releases to ask about at once.
 //
 // Not a throughput dial. Three keeps a check on a large catalogue from opening
@@ -60,7 +76,7 @@ const askable = (entry) => entry.source.type === 'github';
  * more: the tests answer it themselves, and a suite that reached the network
  * would fail on the strength of somebody else's outage.
  */
-const createUpdates = ({ packages, log, latestRelease = sources.latestRelease }) => {
+const createUpdates = ({ packages, log, config, latestRelease = sources.latestRelease }) => {
     const say = log ? log.on('cat') : quiet;
 
     // repo -> { version, at }. Present means asked; a null version means asked
@@ -113,14 +129,37 @@ const createUpdates = ({ packages, log, latestRelease = sources.latestRelease })
         const era = generation;
         const began = Date.now();
 
+        // Logged before the call, not only after it. getPackagesInfo has been
+        // seen to never come back on Tizen 9 — no success, no error, and not
+        // even its own deadline — and a call that only logs on the way out is
+        // invisible in exactly the case worth diagnosing. This line is what
+        // says the listing was asked for at all.
+        say.info('asking the television what it is holding');
+
         asking = packages.list().then(
             (list) => {
                 asking = null;
 
                 const map = list.reduce((byId, entry) => {
-                    byId[entry.id] = entry.version;
+                    byId[entry.id] = entry.version || UNKNOWN_VERSION;
                     return byId;
                 }, {});
+
+                // Versions this service wrote down when it did the installing,
+                // filled in for packages whose own manifest it cannot read.
+                //
+                // Strictly a version, never a row. What is on the television is
+                // decided by the disk listing and nothing else: somebody can
+                // remove an app from the set's own menus and this record would
+                // never hear about it, so a package missing from `map` stays
+                // missing. The condition below can only ever overwrite an
+                // already-present `?`, which is why it is written that way
+                // rather than as an assignment guarded by a lookup.
+                (config ? config.read().lastInstalled || [] : []).forEach((seen) => {
+                    if (seen.version && map[seen.packageId] === UNKNOWN_VERSION) {
+                        map[seen.packageId] = seen.version;
+                    }
+                });
 
                 const elapsed = Date.now() - began;
 

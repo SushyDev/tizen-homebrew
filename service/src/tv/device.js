@@ -54,9 +54,12 @@ const canReachSdb = async () => {
 
         session.close();
 
-        return { reachable: true, error: null, duid };
+        return { reachable: true, error: null, detail: null, duid };
     } catch (error) {
-        return { reachable: false, error: error.code || 'unknown', duid: null };
+        // The code classifies it; the message is what actually happened. Both
+        // travel, because a code alone reads as a verdict and the log then has
+        // to guess what to say about it.
+        return { reachable: false, error: error.code || 'unknown', detail: error.message || null, duid: null };
     }
 };
 
@@ -89,6 +92,7 @@ const probe = async () => {
         duid: null,
         sdbReachable: false,
         sdbError: null,
+        sdbDetail: null,
         ready: false,
         reason: null
     };
@@ -118,6 +122,7 @@ const probe = async () => {
         duid: sdbState.duid,
         sdbReachable: sdbState.reachable,
         sdbError: sdbState.error,
+        sdbDetail: sdbState.detail,
         ready: sdbState.reachable,
         reason
     };
