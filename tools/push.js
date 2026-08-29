@@ -6,7 +6,7 @@ const { join } = require('path');
 const ui = require('./ui.js');
 const { ROOT } = require('./config.js');
 
-const WGT = 'release/tizenhomebrew.wgt';
+const WGT = 'release/homebrew.wgt';
 const MANIFEST = 'config.xml';
 
 const BUILT = ['ui/dist', 'service/dist'];

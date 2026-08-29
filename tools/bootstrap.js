@@ -20,7 +20,7 @@ const STAGING_DIR = '/home/owner/share/tmp/sdk_tools';
 // Must match service/src/config.js. In the staging directory because sdb refuses the rest of share/.
 const HANDOFF_PATH = `${STAGING_DIR}/homebrewCerts.json`;
 
-const WGT = 'release/tizenhomebrew.wgt';
+const WGT = 'release/homebrew.wgt';
 const MANIFEST = 'config.xml';
 
 function packageId(manifest) {
