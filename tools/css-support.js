@@ -9,7 +9,7 @@ const UNSUPPORTED = [
     [/@scope\b/, '@scope', 118],
     [/@custom-media\b/, '@custom-media', 'never — PostCSS should have resolved it'],
     [/color-mix\(/, 'color-mix()', 111],
-    [/(?<![\w-])(?:oklch|oklab|lch|lab|hwb|color)\(/, 'a modern colour function', 111],
+    [/(?<![\w-])(?:oklch|oklab|lch|lab|hwb|color)\(/, 'a modern color function', 111],
     [/:where\(/, ':where()', 88],
     [/(?<![\w-]):is\(/, ':is()', 88],
     [/\bclamp\(/, 'clamp()', 79],

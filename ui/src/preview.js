@@ -35,7 +35,7 @@ const base = {
         { id: 'homebrew', name: 'Tizen Homebrew', version: '0.2.0', installed: '0.1.0', available: '0.2.0', checked: true, update: true, description: 'This app. Updates itself.', icon: HOMEBREW, source: { type: 'github', ref: 'SushyDev/tizen-homebrew' } },
         { id: 'tube', name: 'YouTube', version: '0.1.0', installed: '0.1.0', available: '0.1.0', checked: true, update: false, description: 'YouTube without the advertisements', icon: TUBE, source: { type: 'github', ref: 'SushyDev/tube' } },
         { id: 'jellyfin', name: 'Jellyfin', version: null, installed: '10.9.1', available: null, checked: false, update: false, description: 'Your own media server', icon: JELLYFIN, source: { type: 'github', ref: 'jellyfin/jellyfin-tizen' } },
-        { id: 'kodi', name: 'Kodi', version: '21.0', installed: null, available: '21.0', checked: true, update: false, description: 'The media centre, ported', icon: null, source: { type: 'url', ref: 'https://example.invalid/Kodi.wgt' } }
+        { id: 'kodi', name: 'Kodi', version: '21.0', installed: null, available: '21.0', checked: true, update: false, description: 'The media center, ported', icon: null, source: { type: 'url', ref: 'https://example.invalid/Kodi.wgt' } }
     ],
     checking: null,
     catalogStale: false, tab: 'catalog', github: '', url: '',
@@ -139,7 +139,7 @@ const history = [
     [59220, 'pkg', 'ok', 'installed Tube 0.1.0 in 7.22s'],
     [88400, 'sock', 'info', '192.168.2.31 asked to install catalog jellyfin'],
     [88401, 'pkg', 'info', 'install requested: catalog jellyfin'],
-    [88402, 'pkg', 'info', 'catalogue entry "jellyfin" is github jellyfin/jellyfin-tizen'],
+    [88402, 'pkg', 'info', 'catalog entry "jellyfin" is github jellyfin/jellyfin-tizen'],
     [91655, 'pkg', 'ok', 'got Jellyfin.wgt: 8.10 MB in 3.25s (2.49 MB/s)'],
     [92110, 'pkg', 'ok', 'staged 8.10 MB to /home/owner/share/tmp/sdk_tools/package.wgt'],
     [96330, 'sdb', 'info', 'app install failed[118, -14]'],

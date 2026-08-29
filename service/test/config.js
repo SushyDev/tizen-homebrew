@@ -71,7 +71,7 @@ check('nothing to adopt is not an error', config.adoptHandoff() === null, 'a mis
     check('a pair from before PEM is not mistaken for a usable one',
         config.hasCertificates() === false, 'a .p12 config was accepted');
 
-    check('and is recognisable, so the log can say why',
+    check('and is recognizable, so the log can say why',
         config.hasLegacyCertificates() === true, 'the old shape went unnoticed');
 }
 

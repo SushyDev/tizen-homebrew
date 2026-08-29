@@ -1,8 +1,8 @@
-/* Every colour below is sampled out of the Homebrew Channel's own art.
+/* Every color below is sampled out of the Homebrew Channel's own art.
 
    Chromium 63 and 76 fail at CSS silently, so this is modern CSS lowered by PostCSS and checked
    by tools/css-support.js: no clamp(), no conic-gradient(), and every `gap` in the same rule as
-   its own `display: grid`, which is the only shape `grid-gap` lowering recognises. */
+   its own `display: grid`, which is the only shape `grid-gap` lowering recognizes. */
 
 @custom-media --wide (min-width: 48rem);
 
@@ -98,7 +98,7 @@
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono",
           "Roboto Mono", Menlo, Consolas, monospace;
 
-  /* Phone first. `.tv` resets all of these: nothing read from three metres can be sized in rem. */
+  /* Phone first. `.tv` resets all of these: nothing read from three meters can be sized in rem. */
   --micro: 0.6875rem;
   --label: 0.75rem;
   --body:  0.9375rem;

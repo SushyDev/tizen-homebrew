@@ -41,7 +41,7 @@ const SUCCESS = 'coreinstall spend time = 1234 ms';
     check('and names the command instead when bootstrap is asking',
         /npm run bootstrap -- 1\.2\.3\.4 --replace/.test(fromBootstrap.remedy), String(fromBootstrap.remedy));
 
-    check('an unrecognised verdict gets no invented advice',
+    check('an unrecognized verdict gets no invented advice',
         read('app_id[x] install failed[118, -14]').remedy === null,
         String(read('app_id[x] install failed[118, -14]').remedy));
 }

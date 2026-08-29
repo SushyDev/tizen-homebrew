@@ -67,7 +67,7 @@ const attach = ({ server, store, authorise, installer, catalog, updates, relay, 
             send(Outbound.ERROR, {
                 code: expected ? error.code : ErrorCode.INTERNAL,
                 message: (error && error.message) || 'Unexpected failure.',
-                // Only on failures verdicts.js recognised: what to do, which the UI cannot know.
+                // Only on failures verdicts.js recognized: what to do, which the UI cannot know.
                 remedy: (error && error.remedy) || null,
                 fatal: false
             });

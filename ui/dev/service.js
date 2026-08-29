@@ -56,7 +56,7 @@ const DEVICE = {
     hasCertificates: true
 };
 
-// Drawn rather than fetched, and base64 because the markup contains `#` in every colour.
+// Drawn rather than fetched, and base64 because the markup contains `#` in every color.
 const artwork = (letter, top, bottom) => `data:image/svg+xml;base64,${Buffer.from(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
     '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">' +
@@ -93,12 +93,12 @@ const CATALOG = [
         source: { type: 'github', ref: 'jellyfin/jellyfin-tizen' }
     },
     {
-        // Deliberately without artwork: a catalogue logo is guessed rather than declared, so a monogram row is
+        // Deliberately without artwork: a catalog logo is guessed rather than declared, so a monogram row is
         // the ordinary case.
         id: 'kodi',
         name: 'Kodi',
         version: '21.0',
-        description: 'The media centre, ported',
+        description: 'The media center, ported',
         source: { type: 'url', ref: 'https://example.invalid/Kodi.wgt' }
     }
 ];

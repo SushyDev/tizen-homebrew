@@ -1,4 +1,4 @@
-# The catalogue
+# The catalog
 
 `catalog.json` is the list of apps the channel offers, published to GitHub
 Pages at:
@@ -40,10 +40,10 @@ already on the television.
 
 That half is free: the platform answers "what is installed" for every app at
 once, locally, so the app list draws with it and never waits. Every installed
-row shows its version straight away.
+row shows its version right away.
 
 What an app has *released* is the other half, and it is one GitHub request per
-app. A catalogue with two hundred entries in it cannot spend two hundred
+app. A catalog with two hundred entries in it cannot spend two hundred
 requests on the way to drawing a screen — GitHub allows sixty an hour to a
 television nobody has signed in from — so nothing asks until somebody presses
 **check** on a row, or **check all** under the list. Lookups run three at a
@@ -62,7 +62,7 @@ Then:
 Versions compare as semver, so `0.10.0` is newer than `0.9.9` and `1.2.0-rc1`
 is older than `1.2.0`. Only strictly newer lights the button — a television
 running a hand-pushed build ahead of the release is never offered a way
-backwards.
+backward.
 
 For a `github` app the comparison is against the release, not against `version`
 here: a number written into this file is one somebody has to keep true by hand,

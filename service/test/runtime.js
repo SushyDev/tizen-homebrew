@@ -51,14 +51,14 @@ const NEITHER = {
     check('mainline node is told apart from it on the same node version',
         it.flavour === 'node' && it.engine === 'V8', `${it.flavour}/${it.engine}`);
 
-    check('and its summary does not claim a flavour',
+    check('and its summary does not claim a flavor',
         !/lwnode/.test(runtime.summary(MAINLINE)), runtime.summary(MAINLINE));
 }
 
 {
     const it = runtime.describe(NEITHER);
 
-    check('an engine it does not recognise is unknown rather than guessed',
+    check('an engine it does not recognize is unknown rather than guessed',
         it.flavour === 'unknown' && it.engine === 'unknown' && it.engineVersion === null,
         `${it.flavour}/${it.engine}`);
 

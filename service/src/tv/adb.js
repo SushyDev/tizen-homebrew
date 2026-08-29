@@ -34,7 +34,7 @@ const encodePacket = (command, arg1, arg2, payload) => {
     packet.writeUInt32LE(arg2, 8);
     packet.writeUInt32LE(length, 12);
     packet.writeUInt32LE(checksum(data), 16);
-    // The magic is the command's one's complement, which is how a peer spots a desynchronised stream.
+    // The magic is the command's one's complement, which is how a peer spots a desynchronized stream.
     packet.writeUInt32LE(0xFFFFFFFF - command, 20);
 
     if (length > 0) data.copy(packet, HEADER_BYTES);
@@ -179,7 +179,7 @@ class AdbConnection extends EventEmitter {
                 break;
 
             default:
-                // AUTH is unreachable here: sdbd on a TV in developer mode authorises by host IP.
+                // AUTH is unreachable here: sdbd on a TV in developer mode authorizes by host IP.
                 break;
         }
     }

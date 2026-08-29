@@ -245,7 +245,7 @@ const watchLog = async () => {
     try {
         const { lines, uptime } = await ask(`/logs?since=${sinceSeq}`);
 
-        // A clock that went backwards means the service restarted, so its sequence starts again from one.
+        // A clock that went backward means the service restarted, so its sequence starts again from one.
         if (uptime + 1000 < lastUptime) {
             sinceSeq = 0;
             lastUptime = 0;

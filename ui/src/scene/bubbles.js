@@ -131,7 +131,7 @@ const bubbles = (canvas) => {
 
         return {
             sprite,
-            // The channel's `x` is the centre the sine wanders around, not the bubble's position.
+            // The channel's `x` is the center the sine wanders around, not the bubble's position.
             home: random(width / unit),
             y: (height / unit) + random(200),
             speed,

@@ -144,7 +144,7 @@ you can ever read the log.
 
 Two consequences. First, on an lwnode set **stdout does not exist**: nothing
 you print reaches a pipe, a file, or `sdb shell`, only dlog. `obs/log.js`
-recording in-process is not belt-and-braces there, it is the only copy.
+recording in-process is not belt-and-suspenders there, it is the only copy.
 Second, `dlogutil GJBBYNLkgP.TizenHomebrewService` is the system-level view of
 this service — worth knowing exists, even though the README is right that
 sdbd's allowlist will not run it for you.
@@ -173,7 +173,7 @@ treatment, and the deadline has to be enforced by something other than a timer.
   (`packaging/lwnode.spec`, `%files`). `.dat` is the archive of node's builtin
   JS, loaded from next to the executable
   (`deps/node/src/node_native_module_lwnode-inl.h:205`). Presence of the pair
-  is a cheap "this set has lwnode".
+  is a cheap "this set has lwnode."
 - The service-app shape Samsung documents is `module.exports` an Express app
   and `app.listen()` (`modules/apps/template/lib/index.js`). Nothing in lwnode
   implements `onStart`/`onStop` — that lifecycle is `wrt-service`'s, above the
@@ -222,7 +222,7 @@ closes the same door twice.
 `deps/node/lib/internal/bootstrap/loaders.js:105-108` blacklists `v8` from user
 requires outright; `:177-179` makes `canBeRequiredByUsers` false for it. Not a
 stub returning empty — `MODULE_NOT_FOUND`. Nothing in the bundle requires it
-today (checked), but it is the module a dependency reaches for to serialise
+today (checked), but it is the module a dependency reaches for to serialize
 structured data.
 
 ### 2.3 The rest of the missing surface
@@ -279,7 +279,7 @@ inherits a 15-second ceiling with a misleading error. Worth a line in
 
 Per §1.3 it is a bare `Writable` with `fd` and `_isStdio` bolted on. No
 `isTTY`, no `columns`, no `_type`, no `write` backpressure that means anything.
-Anything that feature-detects a TTY to decide on colour or width sees a
+Anything that feature-detects a TTY to decide on color or width sees a
 non-TTY. `tools/ui.js` runs on the laptop so it does not care; a future
 in-service formatter would.
 

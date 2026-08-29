@@ -39,7 +39,7 @@ function validUrl(value, field) {
     return url;
 }
 
-// A placeholder catalogue URL is fine while developing and is refused by a release build: the URL
+// A placeholder catalog URL is fine while developing and is refused by a release build: the URL
 // is baked into every TV that installs the package.
 function load(options) {
     const opts = options || {};

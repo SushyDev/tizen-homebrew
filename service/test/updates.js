@@ -118,7 +118,7 @@ const run = async () => {
 
         const list = await updates.mark(CATALOG);
 
-        check('marking the catalogue reaches the network for nothing',
+        check('marking the catalog reaches the network for nothing',
             github.asked.length === 0, github.asked.join(', '));
 
         check('and still knows what is installed, and at what version',
@@ -129,7 +129,7 @@ const run = async () => {
             of(list, 'homebrew').checked === false && of(list, 'homebrew').update === false,
             JSON.stringify(of(list, 'homebrew')));
 
-        check('an app with nowhere to ask is answered by the catalogue',
+        check('an app with nowhere to ask is answered by the catalog',
             of(list, 'kodi').checked === true && of(list, 'kodi').available === '21.0' &&
             of(list, 'kodi').update === true,
             JSON.stringify(of(list, 'kodi')));
@@ -302,7 +302,7 @@ const run = async () => {
         const updates = createUpdates({ packages: refusing, latestRelease: fakeGitHub({}).latestRelease });
         const list = await updates.mark(CATALOG);
 
-        check('a television that will not list still produces a catalogue',
+        check('a television that will not list still produces a catalog',
             list.length === CATALOG.length && list.every((entry) => entry.installed === null),
             JSON.stringify(list.map((entry) => [entry.id, entry.installed])));
     }

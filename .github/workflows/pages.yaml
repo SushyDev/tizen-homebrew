@@ -2,7 +2,7 @@
 #
 # Needs Pages turned on once: Settings → Pages → Source: GitHub Actions.
 
-name: Catalogue
+name: Catalog
 
 on:
   push:
@@ -15,14 +15,14 @@ permissions:
   pages: write
   id-token: write
 
-# A queued run waits rather than cancelling: this publishes state, and the last write has to be newest.
+# A queued run waits rather than canceling: this publishes state, and the last write has to be newest.
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
   publish:
-    name: Publish the catalogue
+    name: Publish the catalog
     runs-on: ubuntu-latest
 
     environment:
@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # Malformed JSON empties the app list on every television, and the failure is silent from there.
-      - name: Check the catalogue parses
+      - name: Check the catalog parses
         run: |
           node -e "
             const apps = require('./catalog/catalog.json');
@@ -42,7 +42,7 @@ jobs:
             list.forEach((entry, index) => {
               const named = entry && typeof entry.id === 'string' && typeof entry.name === 'string';
               const sourced = entry && entry.source && ['github', 'url'].includes(entry.source.type) && typeof entry.source.ref === 'string';
-              if (!named || !sourced) throw new Error('Entry ' + index + ' is not a usable catalogue entry.');
+              if (!named || !sourced) throw new Error('Entry ' + index + ' is not a usable catalog entry.');
               // Dropped by the service when it is not a string, leaving the app unable to update.
               if ('packageId' in entry && typeof entry.packageId !== 'string') {
                 throw new Error('Entry ' + index + ' has a packageId that is not a string.');

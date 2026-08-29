@@ -66,14 +66,14 @@ const createCatalog = ({ url, cachePath, log }) => {
             const body = await getJson(url, { headers: { 'user-agent': 'TizenHomebrew/1.0' } });
             const listed = Array.isArray(body) ? body : body && body.apps;
 
-            if (!Array.isArray(listed)) throw new Error('Catalogue was not a list of apps.');
+            if (!Array.isArray(listed)) throw new Error('Catalog was not a list of apps.');
 
             const entries = listed.map(usable).filter(Boolean);
 
             try {
                 writeFileSync(cachePath, JSON.stringify(entries));
             } catch (e) {
-                say.warn(`could not cache the catalogue at ${cachePath}: ${e.message}`);
+                say.warn(`could not cache the catalog at ${cachePath}: ${e.message}`);
             }
 
             say.ok(`${entries.length} apps${listed.length !== entries.length
@@ -87,8 +87,8 @@ const createCatalog = ({ url, cachePath, log }) => {
                 return { entries: cached.entries, stale: true, source: 'cache', error: error.message };
             }
 
-            say.err(`no catalogue and no cache: ${error.message}`);
-            throw Object.assign(new Error(`Could not load the app catalogue: ${error.message}`), { code: 'downloadFailed' });
+            say.err(`no catalog and no cache: ${error.message}`);
+            throw Object.assign(new Error(`Could not load the app catalog: ${error.message}`), { code: 'downloadFailed' });
         }
     };
 

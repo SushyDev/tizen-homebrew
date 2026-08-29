@@ -58,7 +58,7 @@ jobs:
       - name: Test
         run: npm test
 
-      # `--release` refuses a placeholder catalogue URL; a prerelease may carry one.
+      # `--release` refuses a placeholder catalog URL; a prerelease may carry one.
       - name: Package
         env:
           STRICT: ${{ (startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')) && '--release' || '' }}

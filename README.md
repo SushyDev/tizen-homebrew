@@ -9,7 +9,7 @@ network. This points it at `127.0.0.1` — the TV becomes its own developer
 machine — and puts the interface on your phone. Set it up once; no computer
 after that.
 
-- Install from a catalogue, a GitHub release, a URL, or a USB stick
+- Install from a catalog, a GitHub release, a URL, or a USB stick
 - Re-signs every package for your TV, so builds signed by other people install
 - A dmesg-style log on the TV screen
 - An sdb shell, from the phone
@@ -54,7 +54,7 @@ other machine can reach its sdb daemon.
 
 | Tab | |
 | --- | --- |
-| **Apps** | The catalogue, installed with one press |
+| **Apps** | The catalog, installed with one press |
 | **Upload** | A `.wgt` from the phone |
 | **GitHub** | `owner/repo` — takes the newest release |
 | **URL** | A direct https link |
@@ -72,7 +72,7 @@ been *released* is a request to GitHub per app, so it waits to be asked:
 release then says *update* instead of *install*, with the version it would
 replace underneath.
 
-Tizen Homebrew is in its own catalogue, so that is also how the channel
+Tizen Homebrew is in its own catalog, so that is also how the channel
 updates itself. Pressing it is an ordinary install of an ordinary package that
 happens to be this one. From a working copy, over the LAN, there is still:
 
@@ -165,7 +165,7 @@ newest. `GET /logs?since=<seq>` returns the same records as JSON.
 [   59.220] pkg: installed Tube 0.1.0 in 7.22s
 ```
 
-**The catalogue.** The app list is [`catalog/`](catalog/), published to GitHub
+**The catalog.** The app list is [`catalog/`](catalog/), published to GitHub
 Pages. Adding an app is a commit there — no rebuild, nothing to reinstall.
 `source.type` is `github` (newest release's first `.wgt`) or `url`.
 
@@ -183,7 +183,7 @@ Pages. Adding an app is a commit there — no rebuild, nothing to reinstall.
 a row know it is already on the TV: the platform's own package list answers
 that for every app at once, locally, so the list draws with it and never waits.
 What an app has *released* is one GitHub request each, which a two-hundred-app
-catalogue cannot spend on the way to a screen — so that half is a button, three
+catalog cannot spend on the way to a screen — so that half is a button, three
 lookups at a time, cached for six hours, and it stops early if GitHub starts
 refusing. Newer by semver, and only strictly newer, lights **update**; an
 installed app with nothing newer gets a blocked one, and the line underneath
@@ -248,8 +248,8 @@ draft is invisible to `releases/latest`, which is what every TV asks. The
 widget is **unsigned** — a signature names one television, so a signed release
 would install on nobody else's set, and every Tizen Homebrew re-signs what it
 installs anyway. That includes itself, which is why the channel is in its own
-catalogue. No secrets are needed; `HOMEBREW_CATALOG_URL` as a repository
-variable overrides the catalogue origin if you want a different one.
+catalog. No secrets are needed; `HOMEBREW_CATALOG_URL` as a repository
+variable overrides the catalog origin if you want a different one.
 
 ---
 
@@ -257,7 +257,7 @@ variable overrides the catalogue origin if you want a different one.
 
 Both screens are the Wii's Homebrew Channel, rebuilt: an ocean falling from a
 lit surface to true black, god rays, bubbles, Frutiger Aero glass over the
-water. Nothing was eyeballed — every colour is sampled from the channel's own
+water. Nothing was eyeballed — every color is sampled from the channel's own
 artwork, `ui/src/scene/bubbles.js` ports `bubbles.c` constant for constant, and
 the theme is its banner music cut to loop sample-exactly. Credits are on the TV.
 

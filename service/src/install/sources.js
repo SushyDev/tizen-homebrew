@@ -89,8 +89,8 @@ const resolve = async ({ source, reference, catalog = [], upload = null, log = n
 
         case 'catalog': {
             const entry = catalog.find((candidate) => candidate.id === reference);
-            if (!entry) throw rejected('notFound', `No catalogue app with id "${reference}".`);
-            reporter(log).info(`catalogue entry "${reference}" is ${entry.source.type} ${entry.source.ref}`);
+            if (!entry) throw rejected('notFound', `No catalog app with id "${reference}".`);
+            reporter(log).info(`catalog entry "${reference}" is ${entry.source.type} ${entry.source.ref}`);
             return resolve({ source: entry.source.type, reference: entry.source.ref, catalog, log });
         }
 
