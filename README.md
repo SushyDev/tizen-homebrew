@@ -38,6 +38,9 @@ browser opens — sign in), then builds, signs, installs and opens the app. No
 Tizen Studio needed. The certificate is yours — your own Samsung account,
 public level, nothing shared — and lands in `~/.tizen-certs`.
 
+It also leaves the certificates on the TV, so from the first boot it re-signs
+whatever it installs — including packages built by other people.
+
 **3 · On the TV again.** **Apps** → **12345** → **Settings**, **Host PC IP** =
 `127.0.0.1`. **Restart the TV.**
 
@@ -46,16 +49,7 @@ sdbd runs a command allowlist. From here the TV installs its own apps and no
 other machine can reach its sdb daemon.
 
 **4 · On your phone.** Open Tizen Homebrew on the TV. Its screen shows an
-address and a 6-digit code; type both into your phone.
-
-**5 · One last command,** with that same code:
-
-```sh
-npm run certs -- 192.168.2.9 <code>
-```
-
-Now the TV re-signs whatever it installs, so packages built by other people
-work on it. Done.
+address and a 6-digit code; type both into your phone. Done.
 
 ---
 
@@ -101,13 +95,33 @@ npm run package && npm run push -- 192.168.2.9 <pin>
 | `npm run package -- --unsigned` | The same, signed by nobody — what a release carries |
 | `npm run bootstrap -- <ip>` | Install over sdb (needs Host PC IP pointed here) |
 | `npm run push -- <ip> <pin>` | Install over the LAN, once the app is running |
-| `npm run certs -- <ip> <pin>` | Give the TV its certificates (`--forget` removes) |
+| `npm run certs -- <ip> <pin>` | Re-send the TV's certificates; bootstrap already did (`--forget` removes) |
 | `npm run duid -- <ip> [pin]` | Print the device id a certificate binds to |
+| `npm run repl -- <ip>` | A prompt inside the running service — developer builds only |
 | `npm run doctor` | Check prerequisites when something looks wrong |
 
 Given the PIN, `mint` `certs` `duid` `push` all work with the TV pinned to
 `127.0.0.1`. `bootstrap` cannot — it needs sdbd, which is what a pinned set
 stops answering.
+
+**Developer builds.** `--dev` fixes the pairing PIN at `000000` and puts a
+prompt inside the service, so a build being pushed every few minutes stops
+asking to have its PIN read off the screen:
+
+```sh
+npm run package -- --dev && npm run push -- 192.168.2.9 000000
+npm run repl -- 192.168.2.9
+```
+
+Every line is evaluated in the running service — `store.get()`, `await
+packages.list()`, `require('fs').readdirSync('/opt/usr/apps').length` — and
+`.inspect` opens Node's own inspector on the set for Chrome DevTools,
+breakpoints and heap snapshots. `.names` lists what is in scope.
+
+This is arbitrary code execution as the service, reachable by anything on the
+network, so it exists only in a build made this way: an ordinary build has no
+`/dev` routes in it at all, because the bundler drops the branch. `npm run
+package -- --release` refuses a developer build outright.
 
 **When it goes wrong**
 
@@ -133,8 +147,8 @@ distributor certificate:
 
 From Tizen 7 the TV enforces it, so a `.wgt` installs on its builder's set and
 nowhere else. That is why prebuilt widgets are not something you can hand
-around, and why step 5 exists: a TV holding its own pair re-signs everything it
-installs, in about 150ms.
+around, and why the TV is handed its own pair during setup: a set holding one
+re-signs everything it installs, in about 150ms.
 
 **Security.** The install endpoint is open to the network on purpose, so it is
 gated by the 6-digit PIN — regenerated every start, never written down by the

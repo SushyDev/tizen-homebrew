@@ -3,10 +3,9 @@
 // Re-signing, exercised against a real package and a real certificate pair.
 //
 // Both are made here rather than found: the .wgt comes from fixture.js, and the
-// pair is minted in-process with node-forge. Nothing about the signing cares
-// whether Samsung issued the certificate — only the television does, later —
-// so a self-signed pair proves everything this module is responsible for, and
-// proves it without a network, an account, or a set on the desk.
+// pair is minted in-process with node-forge and converted the way `npm run
+// certs` converts it. Nothing about the signing cares whether Samsung issued the
+// certificate — only the television does, later.
 
 const forge = require('node-forge');
 const JSZip = require('jszip');
@@ -14,6 +13,7 @@ const { mkdtempSync } = require('fs');
 const { tmpdir } = require('os');
 
 const { resign, openPair, deviceOf, devicesOf } = require('../src/install/resign.js');
+const { asPem } = require('../../tools/certificates.js');
 const fixture = require('./fixture.js');
 
 const results = [];
@@ -57,10 +57,15 @@ const mint = (...devices) => {
 
         const asn1 = forge.pkcs12.toPkcs12Asn1(keys.privateKey, [cert], PASSWORD);
 
-        return Buffer.from(forge.asn1.toDer(asn1).getBytes(), 'binary').toString('base64');
+        return asPem(Buffer.from(forge.asn1.toDer(asn1).getBytes(), 'binary'), PASSWORD);
     };
 
-    return { authorCert: certificate('test author'), distributorCert: certificate('test distributor'), password: PASSWORD };
+    return {
+        author: certificate('test author'),
+        distributor: certificate('test distributor'),
+        certDuid: devices[0] || null,
+        certDuids: devices
+    };
 };
 
 const namesInside = async (archive) => {
@@ -83,7 +88,7 @@ const run = async () => {
 
         check('its contents survive', names.indexOf('config.xml') !== -1, names.join(', '));
         check('and only its contents were digested', files === 1, `digested ${files} files`);
-        check('the device is read from the certificate', device === 'TESTSET1234', String(device));
+        check('the device comes back with the signed package', device === 'TESTSET1234', String(device));
     }
 
     // --- one signed for somebody else's television ------------------------
@@ -124,8 +129,9 @@ const run = async () => {
         const notAWidget = await resign(fixture.notAPackage(), pair).catch((e) => e);
         check('a zip with no config.xml is refused', notAWidget.code === 'resignFailed', String(notAWidget.code));
 
-        const wrongPassword = await resign(fixture.wgt(), { ...pair, password: 'nope' }).catch((e) => e);
-        check('a wrong password is refused', wrongPassword.code === 'resignFailed', String(wrongPassword.code));
+        const damaged = await resign(fixture.wgt(), { ...pair, distributor: { certificates: ['nonsense'], key: 'nonsense' } })
+            .catch((e) => e);
+        check('a damaged half is refused', damaged.code === 'resignFailed', String(damaged.code));
 
         const none = await resign(fixture.wgt(), {}).catch((e) => e);
         check('no certificates at all is refused', none.code === 'resignFailed', String(none.code));
@@ -133,8 +139,8 @@ const run = async () => {
 
     // --- reading a pair back ----------------------------------------------
     {
-        const { distributor } = openPair(pair);
-        check('a stored pair reports the device it names', deviceOf(distributor) === 'TESTSET1234', String(deviceOf(distributor)));
+        openPair(pair);
+        check('a stored pair reports the device it names', deviceOf(pair) === 'TESTSET1234', String(deviceOf(pair)));
     }
 
     // --- a pair that names several televisions -----------------------------
@@ -144,22 +150,20 @@ const run = async () => {
     // for somebody else's, and installs were refused on the strength of it.
     {
         const many = mint('OTHERSET0001', 'TESTSET1234', 'OTHERSET0002');
-        const { distributor } = openPair(many);
-
-        const found = devicesOf(distributor);
+        const found = devicesOf(many);
 
         check('a pair reports every device it names',
             found.join(',') === 'OTHERSET0001,TESTSET1234,OTHERSET0002', found.join(','));
 
         check('deviceOf still answers with the first of them',
-            deviceOf(distributor) === 'OTHERSET0001', String(deviceOf(distributor)));
+            deviceOf(many) === 'OTHERSET0001', String(deviceOf(many)));
 
         // The place the wrong answer actually cost something: config.js decides
         // whether an install may proceed on this television.
         process.env.HOMEBREW_CONFIG_DIR = mkdtempSync(`${tmpdir()}/homebrew-resign-test-`);
         const config = require('../src/config.js');
 
-        config.update({ ...many, certDuid: found[0], certDuids: found });
+        config.update(many);
 
         check('a TV named among several is allowed to install',
             config.hasCertificates('TESTSET1234') === true, 'a covered TV was refused');

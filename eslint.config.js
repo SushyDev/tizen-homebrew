@@ -103,7 +103,10 @@ module.exports = [
             '**/dist/**',
             '**/release/**',
             '**/.ncc/**',
-            '**/.package/**'
+            '**/.package/**',
+            // A checkout of Samsung's engine, kept here to read rather than to
+            // build. Linting node's own fork fails the suite on their config.
+            'lwnode/**'
         ]
     },
     {

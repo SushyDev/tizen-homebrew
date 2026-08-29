@@ -64,10 +64,13 @@ const main = async () => {
             );
         }
 
+        // Converted here, not on the television: turning a .p12 into PEM needs
+        // an ASN.1 parser, and keeping one out of the service bundle is worth a
+        // third of its size.
         return {
-            authorCert: readFileSync(authorPath).toString('base64'),
-            distributorCert: readFileSync(distributorPath).toString('base64'),
-            password
+            author: certificates.asPem(readFileSync(authorPath), password),
+            distributor: certificates.asPem(readFileSync(distributorPath), password),
+            devices: certificates.devicesIn(distributorPath, password)
         };
     };
 

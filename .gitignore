@@ -14,3 +14,6 @@ release/
 
 # macOS finder metadata
 .DS_Store
+
+# A read-only checkout of Samsung/lwnode, not part of the build.
+lwnode/

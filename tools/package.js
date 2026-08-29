@@ -34,6 +34,10 @@ const certificates = require('./certificates.js');
 // service/dist/index.js but drop service/index.js". Staging an allowlist
 // instead makes the package contents exact and auditable: nothing ships
 // unless it is listed here.
+// The sentence main.js logs in a developer build. A string literal, so the
+// minifier keeps it verbatim, which makes it a reliable mark on the artifact.
+const DEVELOPER_MARK = 'DEVELOPER BUILD — pin fixed at';
+
 const APP = {
     output: 'release/tizenhomebrew.wgt',
     include: [
@@ -191,6 +195,12 @@ async function packageApp(certificate) {
 async function main() {
     const unsigned = process.argv.indexOf('--unsigned') !== -1;
 
+    // Set before the config is read and before the rebuild below, which is a
+    // separate process and inherits the environment but not the flag. Without
+    // this, `npm run build -- --dev && npm run package` quietly packages the
+    // ordinary bundle the rebuild just overwrote.
+    if (process.argv.indexOf('--dev') !== -1) process.env.HOMEBREW_DEV = '1';
+
     // A release build refuses a placeholder catalogue URL. The URL is baked
     // into the package and every TV that installs it, so shipping the example
     // host produces an app whose catalogue is permanently empty.
@@ -206,6 +216,17 @@ async function main() {
     ui.heading('package', `v${config.version}${unsigned ? ' unsigned' : ''}`);
     ui.note(ui.style.dim('  building first...'));
     execFileSync('node', [join(__dirname, 'build.js')], { cwd: ROOT, stdio: 'inherit' });
+
+    // Belt to config.js's braces. That refuses HOMEBREW_DEV=1 outright and is
+    // what actually catches this, since packaging rebuilds first and a rebuild
+    // without the variable cannot produce a developer bundle. This reads the
+    // artifact anyway, because it is the artifact that gets zipped.
+    if (release && readFileSync(join(ROOT, 'service/dist/index.js'), 'utf8').indexOf(DEVELOPER_MARK) !== -1) {
+        throw Object.assign(new Error(
+            'That bundle is a developer build: it pairs with 000000 and evaluates what the\n' +
+            '  LAN sends it. Rebuild without HOMEBREW_DEV=1 before releasing.'
+        ), { isFriendly: true });
+    }
 
     ui.group(unsigned ? 'packaging' : 'signing');
     const result = await packageApp(certificate);

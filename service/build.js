@@ -24,6 +24,9 @@ const outDir = join(root, 'dist');
 // floor the build guarantees rather than one inferred from release notes.
 const TARGET = 'node12';
 
+// A ceiling, not a target: one import once cost 466KB and nothing said so.
+const CEILING = 350 * 1024;
+
 const buildStamp = (version) => {
     const sha = (() => {
         try {
@@ -45,7 +48,11 @@ const main = async () => {
     const bundle = await rolldown({
         input: join(root, 'src', 'main.js'),
         platform: 'node',
-        transform: { target: TARGET }
+        transform: {
+            target: TARGET,
+            // So an ordinary build has no REPL in it rather than a disabled one.
+            define: { 'globalThis.__HOMEBREW_DEV__': config.dev ? 'true' : 'false' }
+        }
     });
 
     const { output } = await bundle.generate({ format: 'cjs', minify: true });
@@ -61,6 +68,15 @@ const main = async () => {
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
     writeFileSync(join(outDir, 'index.js'), code);
+
+    const marked = /DEVELOPER BUILD/.test(code);
+
+    if (config.dev !== marked) {
+        throw Object.assign(new Error(config.dev
+            ? 'HOMEBREW_DEV=1 but the bundle has no developer branch in it.'
+            : 'This is not a developer build, but the REPL survived into the bundle.'),
+        { isFriendly: true });
+    }
 
     // Assets rolldown emitted alongside the entry, if any dependency ships one.
     output
@@ -82,6 +98,14 @@ const main = async () => {
 
     const bytes = Buffer.byteLength(code);
     ui.ok('bundle', `${ui.bytes(bytes)}  (${bytes.toLocaleString()} bytes)`);
+
+    if (bytes > CEILING) {
+        throw Object.assign(new Error(
+            `The bundle is ${ui.bytes(bytes)}, over the ${ui.bytes(CEILING)} ceiling.\n` +
+            '  Something large arrived with a dependency. `npm ls <package> --all` names\n' +
+            '  what pulled it in; importing the one file you need usually undoes it.'
+        ), { isFriendly: true });
+    }
 
     // The floor is checked rather than assumed: a dependency using syntax the
     // target cannot parse would otherwise only surface on the TV.

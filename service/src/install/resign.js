@@ -20,14 +20,13 @@
 // the format requires, and the reason the two calls below are chained rather
 // than independent.
 //
-// The signing itself is `tizen`'s, the same implementation `npm run package`
-// uses on a laptop, so a package re-signed here has the shape of one signed by
-// the CLI — including the `%2F` in its reference URIs, which looks like a bug
-// and is what a television accepts.
+// The signing is install/signature.js, which is the `tizen` CLI's own signer
+// taking PEM instead of a PKCS#12 — so a package re-signed here has the shape of
+// one signed by the CLI, including the `%2F` in its reference URIs, which looks
+// like a bug and is what a television accepts.
 
-const forge = require('node-forge');
 const JSZip = require('jszip');
-const { Signature } = require('tizen');
+const Signature = require('./signature.js');
 
 // What Tizen puts a signature in. Anything matching is stale by definition: it
 // signs the package as it was before we touched it.
@@ -35,66 +34,55 @@ const SIGNATURE_FILE = /^(author-signature\.xml|signature\d*\.xml)$/i;
 
 const refuse = (message) => Object.assign(new Error(message), { code: 'resignFailed' });
 
+/** True when `pair` is `{ certificates: [pem], key: pem }` and usable. */
+const isPair = (pair) => Boolean(pair) &&
+    Array.isArray(pair.certificates) && pair.certificates.length &&
+    pair.certificates.every((pem) => typeof pem === 'string' && /BEGIN CERTIFICATE/.test(pem)) &&
+    typeof pair.key === 'string' && /BEGIN [A-Z ]*PRIVATE KEY/.test(pair.key);
+
 /**
- * Opens a stored pair, or says which half would not open.
+ * Both halves of a stored pair, or which one is wrong.
  *
- * Both halves are opened together because a pair is only useful together, and
- * because this is the one moment a bad password can be reported to somebody
- * who is still looking — rather than at the end of an install, minutes later,
- * as a failure that reads like the television's fault.
+ * Checked together because a pair is only useful together, and here rather than
+ * at the end of an install, minutes later, as something that reads like the
+ * television's fault.
  */
 const openPair = (certificates) => {
-    const open = (base64, which) => {
-        if (!base64) throw refuse(`No ${which} certificate is stored for this television.`);
-
-        try {
-            const der = forge.util.createBuffer(Buffer.from(base64, 'base64').toString('binary'));
-            return forge.pkcs12.pkcs12FromAsn1(forge.asn1.fromDer(der), false, certificates.password);
-        } catch (e) {
-            throw refuse(`The ${which} certificate would not open — wrong password, or a damaged file.`);
-        }
+    const open = (pair, which) => {
+        if (!pair) throw refuse(`No ${which} certificate is stored for this television.`);
+        if (!isPair(pair)) throw refuse(`The stored ${which} certificate is not readable — send the pair again.`);
+        return pair;
     };
 
-    return { author: open(certificates.authorCert, 'author'), distributor: open(certificates.distributorCert, 'distributor') };
+    return {
+        author: open((certificates || {}).author, 'author'),
+        distributor: open((certificates || {}).distributor, 'distributor')
+    };
 };
 
 /**
- * The device a certificate was minted for, or null.
+ * Every device a stored pair names.
  *
- * Read back out of the certificate rather than trusted from whatever wrote it
- * down. Certificates for the wrong television are the one failure that looks
- * exactly like a working install, right up until the television refuses it.
+ * Recorded when the pair was sent rather than read back out of it: the reading
+ * needs an ASN.1 parser, which is the dependency this file exists without.
+ * `--duidList` is a list and one pair legitimately covers several sets, so
+ * folding it to one entry refuses installs on televisions the pair is good for.
  */
-const devicesOf = (p12) => p12.safeContents
-    .reduce((bags, contents) => bags.concat(contents.safeBags), [])
-    .filter((bag) => bag.type === forge.pki.oids.certBag && bag.cert)
-    .reduce((found, bag) => {
-        const extension = bag.cert.getExtension('subjectAltName');
-        const names = (extension && extension.altNames) || [];
+const devicesOf = (certificates) => {
+    const named = (certificates || {}).certDuids;
 
-        return found.concat(names
-            .map((name) => /deviceid=(.+)$/.exec(name.value || ''))
-            .filter(Boolean)
-            .map((match) => match[1]));
-    }, [])
-    .filter((device, index, all) => all.indexOf(device) === index);
+    if (Array.isArray(named)) return named.filter(Boolean);
 
-/**
- * The first device a pair names, for the places that can only show one.
- *
- * Deciding anything on this is a mistake: `--duidList` is a list, one pair
- * legitimately covers several sets — which is the whole point of `npm run
- * mint` adding to it rather than replacing it — and folding that list down to
- * its first entry made a certificate that covers *this* television look like
- * one minted for somebody else's, with installs refused on the strength of it.
- */
-const deviceOf = (p12) => devicesOf(p12)[0] || null;
+    return (certificates || {}).certDuid ? [certificates.certDuid] : [];
+};
+
+const deviceOf = (certificates) => devicesOf(certificates)[0] || null;
 
 /**
  * Re-signs `archive` with the certificates stored for this television.
  *
- * `certificates` is the shape config.js keeps: base64 of each DER .p12, and
- * the one password that opens both.
+ * `certificates` is the shape config.js keeps: an `author` and a `distributor`,
+ * each `{ certificates: [pem], key: pem }`, plus the devices they name.
  */
 const resign = async (archive, certificates) => {
     const refuse = (message) => Object.assign(new Error(message), { code: 'resignFailed' });
@@ -143,7 +131,7 @@ const resign = async (archive, certificates) => {
 
     return {
         archive: await repack(signed),
-        device: deviceOf(distributor),
+        device: deviceOf(certificates),
         files: digested
     };
 };

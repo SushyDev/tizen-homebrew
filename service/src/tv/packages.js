@@ -1,6 +1,6 @@
 'use strict';
 
-// Installed packages, read off the disk.
+// Installed packages, read off the disk and named by the platform.
 //
 // Listing only. Removing one needs packagemanager.install, which requires a
 // platform-level certificate — signing with ours produces a package the TV
@@ -20,7 +20,10 @@
 const { readdir, readFile } = require('fs').promises;
 const { join } = require('path');
 
-const onTv = typeof tizen !== 'undefined';
+// `typeof` and not `globalThis.tizen`: a runtime may hand it over as a binding.
+const platform = () => (typeof tizen !== 'undefined' ? tizen : undefined);
+
+const onTv = () => platform() !== undefined;
 
 const offTv = () => Object.assign(new Error('Only available on a TV.'), { code: 'notOnTv' });
 
@@ -31,6 +34,8 @@ const APPS_ROOT = '/opt/usr/apps';
 // The manifest inside a package that carries its version. A web app keeps one
 // where the runtime unpacked it; a native package keeps its own at the root.
 const MANIFESTS = ['res/wgt/config.xml', 'tizen-manifest.xml'];
+
+const NAMING_DEADLINE = 4000;
 
 const attribute = (xml, name) => {
     const found = new RegExp(`<(?:widget|manifest)\\b[^>]*\\b${name}="([^"]*)"`).exec(xml);
@@ -43,10 +48,10 @@ const elementText = (xml, name) => {
 };
 
 /** What a package's own manifest says about it, or nulls when unreadable. */
-const describe = async (id) => {
+const describe = async (id, root) => {
     for (const relative of MANIFESTS) {
         try {
-            const xml = await readFile(join(APPS_ROOT, id, relative), 'utf8');
+            const xml = await readFile(join(root, id, relative), 'utf8');
             return { version: attribute(xml, 'version'), name: elementText(xml, 'name') };
         } catch (e) {
             // The next candidate, or nothing. Another app's directory is
@@ -57,10 +62,68 @@ const describe = async (id) => {
     return { version: null, name: null };
 };
 
+// Turned off for the rest of the process the first time the platform refuses
+// or stalls, so one bad call costs one deadline rather than one per listing.
+let naming = true;
+
+// At info, not debug: a television drops debug records, so a figure logged there
+// is invisible on the only machine it describes.
+let reported = false;
+
+/**
+ * Names and versions from `tizen.application`, as package id -> `{ name, version }`.
+ *
+ * Never rejects: every failure is an empty map and the manifests answer instead.
+ * The deadline covers a slow device API, not one that blocks the thread.
+ */
+const named = (say) => new Promise((resolve) => {
+    const api = platform();
+
+    if (!naming || !api || !api.application || typeof api.application.getAppsInfo !== 'function') {
+        return resolve(new Map());
+    }
+
+    let settled = false;
+
+    const give = (value, note) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (note) {
+            naming = false;
+            if (say) say.info(`tizen.application.getAppsInfo ${note} — falling back to manifests`);
+        }
+        resolve(value);
+    };
+
+    const timer = setTimeout(() => give(new Map(), `did not answer in ${NAMING_DEADLINE}ms`), NAMING_DEADLINE);
+
+    // One package can hold several applications; the versioned one wins.
+    const collapse = (apps) => (apps || []).reduce((byPackage, app) => {
+        const id = app && (app.packageId || app.id);
+        const held = id ? byPackage.get(id) : null;
+
+        if (id && !(held && held.version)) {
+            byPackage.set(id, { name: app.name || null, version: app.version || null });
+        }
+
+        return byPackage;
+    }, new Map());
+
+    try {
+        api.application.getAppsInfo(
+            (apps) => give(collapse(apps)),
+            (error) => give(new Map(), `refused (${(error && error.message) || 'no reason given'})`)
+        );
+    } catch (error) {
+        give(new Map(), `threw (${error.message})`);
+    }
+});
+
 /**
  * Everything installed, read off the disk.
  *
- * Two other sources were tried on a QE65S93DAT and neither can be used.
+ * Two other sources were tried on a QE65S93DAT and neither can replace this.
  *
  * `tizen.package.getPackagesInfo` blocks the JS thread for about five minutes
  * — not slowly, entirely: no callback, and not even the deadline that was
@@ -73,35 +136,53 @@ const describe = async (id) => {
  * Samsung's own commands — `getduid` and `vd_appinstall` both answer — and is
  * mute for the rest. `pkgcmd -l; echo marker` came back empty, marker and all.
  *
- * A directory listing is neither. It is a local read of a path this service
- * already reads out of, it cannot block, and the names it returns are already
- * the ids to match on. A package whose manifest cannot be read still counts
- * as installed with no version: knowing something is on the set is most of
- * the value, and a missing version costs an update mark rather than a row.
+ * So the directory listing alone decides what is installed: a package a device
+ * API left out would read as one that is not there, costing a row rather than a
+ * version. `tizen.application.getAppsInfo` is a different subsystem from the
+ * package API and is asked only to fill in names and versions, which most of
+ * these entries lack — another app's directory is listable, its manifest is not.
  */
-const listOnDisk = async () => {
+const listOnDisk = async (options) => {
+    const opts = options || {};
+    const root = opts.appsRoot || APPS_ROOT;
+    const say = opts.say || null;
+
+    // `.recovery` and `.pptestfw` sit alongside the real ones.
+    const ids = (await readdir(root).catch(() => [])).filter((name) => name[0] !== '.');
+
+    const fromPlatform = await named(say);
+
+    const found = [];
+
     // Asynchronous throughout, and that is not a style preference. A set holds
     // three hundred packages, each of which is a directory read and up to two
     // file reads; done synchronously that is six hundred blocking calls with
     // the whole service stopped behind them, and the television's own page
     // polls its log once a second. Every await here is a chance for that poll
     // to be answered.
-    const names = await readdir(APPS_ROOT).catch(() => []);
-
-    const found = [];
-
-    // `.recovery` and `.pptestfw` sit alongside the real ones.
-    for (const id of names.filter((name) => name[0] !== '.')) {
-        const { version, name } = await describe(id);
+    //
+    for (const id of ids) {
+        const known = fromPlatform.get(id);
+        const { version, name } = known && (known.version || known.name) ? known : await describe(id, root);
 
         found.push({ id, name: name || id, version, totalSize: null, lastModified: null });
+    }
+
+    if (say && !reported && fromPlatform.size) {
+        reported = true;
+
+        const covered = ids.filter((id) => fromPlatform.has(id)).length;
+        const versioned = found.filter((entry) => entry.version).length;
+
+        say.info(`tizen.application named ${covered}/${ids.length} packages; ` +
+            `${versioned} of ${ids.length} now carry a version`);
     }
 
     return found;
 };
 
 /** Everything installed, as plain data. */
-const list = () => (onTv ? listOnDisk() : Promise.reject(offTv()));
+const list = (options) => (onTv() ? listOnDisk(options) : Promise.reject(offTv()));
 
 /**
  * Launches an installed app.
@@ -110,11 +191,11 @@ const list = () => (onTv ? listOnDisk() : Promise.reject(offTv()));
  * to reload new code.
  */
 const launch = (appId) => {
-    if (!onTv) return Promise.reject(offTv());
+    if (!onTv()) return Promise.reject(offTv());
 
     return new Promise((resolve, reject) => {
         try {
-            tizen.application.launch(
+            platform().application.launch(
                 appId,
                 () => resolve({ appId, launched: true }),
                 (error) => reject(Object.assign(new Error(`Could not launch ${appId}: ${error.message}`), { code: 'internal' }))
@@ -125,4 +206,4 @@ const launch = (appId) => {
     });
 };
 
-module.exports = { list, launch, onTv };
+module.exports = { list, launch, onTv, APPS_ROOT, NAMING_DEADLINE };

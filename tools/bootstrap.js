@@ -30,6 +30,8 @@
 const { readFileSync, existsSync, statSync } = require('fs');
 const { join, dirname } = require('path');
 
+const JSZip = require('jszip');
+
 const ui = require('./ui.js');
 const { ROOT } = require('./config.js');
 const certificates = require('./certificates.js');
@@ -40,6 +42,10 @@ const verdicts = require('../service/src/install/verdicts.js');
 // Where packages are staged on the TV before vd_appinstall reads them. This is
 // the directory the Tizen installer expects to find sideloaded packages in.
 const STAGING_DIR = '/home/owner/share/tmp/sdk_tools';
+
+// Must match service/src/config.js. Inside the staging directory because sdb
+// refuses to write anywhere else under share/.
+const HANDOFF_PATH = `${STAGING_DIR}/homebrewCerts.json`;
 
 const WGT = 'release/tizenhomebrew.wgt';
 const MANIFEST = 'config.xml';
@@ -70,6 +76,36 @@ function frame(tag, value) {
 
 // Waits for the daemon to answer OPEN, which is when the stream has a remote
 // id and can be written to.
+/** Whether a .wgt carries the two signatures a set checks before installing. */
+async function isSigned(path) {
+    try {
+        const zip = await JSZip.loadAsync(readFileSync(path));
+        const names = Object.keys(zip.files);
+
+        return names.indexOf('author-signature.xml') !== -1 && names.indexOf('signature1.xml') !== -1;
+    } catch (e) {
+        return false;
+    }
+}
+
+// The pair this machine holds, converted for the television, or null when there
+// is nothing to send.
+function handOffCertificates() {
+    const found = certificates.locate();
+
+    if (certificates.missing(found).length) return null;
+
+    try {
+        return {
+            author: certificates.asPem(readFileSync(found.author), found.password),
+            distributor: certificates.asPem(readFileSync(found.distributor), found.distributorPassword),
+            devices: certificates.devicesIn(found.distributor, found.distributorPassword)
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
 const whenOpen = (stream) => new Promise((resolve, reject) => {
     if (stream.remoteId() !== -1) return resolve();
 
@@ -195,6 +231,19 @@ async function main() {
 
     if (!existsSync(join(ROOT, WGT))) {
         throw friendly(`No package at ${WGT}\n\n  Build one first:  npm run package`);
+    }
+
+    // Checked here rather than discovered from the television. An unsigned .wgt
+    // installs perfectly well over the LAN, because the set re-signs what it
+    // installs — but over sdb nothing re-signs it, and a set answers with
+    // "Check certificate error", which reads as a problem with the certificates.
+    if (!await isSigned(join(ROOT, WGT))) {
+        throw friendly(
+            `${WGT} is not signed, and sdb will not install an unsigned package.\n\n` +
+            '  `npm run package -- --unsigned` builds those; they are for `npm run push`,\n' +
+            '  which goes through Tizen Homebrew and re-signs on the way in.\n\n' +
+            '  Build a signed one:  npm run package'
+        );
     }
 
     ui.heading('bootstrap', ip);
@@ -333,6 +382,19 @@ async function main() {
         }
 
         ui.ok('homebrew', `${ui.bytes(statSync(file).size)} · v${installed.version || '?'}`, Date.now() - started);
+
+        // The certificates, left where the service adopts them on first start.
+        // Without this somebody has to read a PIN off the television and run
+        // `npm run certs`, which is a whole step of the README for something
+        // this script is already holding and already connected to send.
+        const handed = handOffCertificates();
+
+        if (handed) {
+            await push(session, HANDOFF_PATH, Buffer.from(JSON.stringify(handed)));
+            ui.ok('certificates', `sent for ${handed.devices.join(', ') || 'an unnamed device'}`);
+        } else {
+            ui.warn('no certificate pair here to send — `npm run certs` after this, or `npm run mint` first');
+        }
 
     } finally {
         session.close();

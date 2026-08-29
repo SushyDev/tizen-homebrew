@@ -55,7 +55,9 @@ const request = (url, options = {}) => {
             response.on('error', (error) => failWith(`Response failed: ${error.message}`));
         };
 
-        const outgoing = transport.request(target, { method, headers }, collect);
+        // In the options, not only via setTimeout: lwnode destroys a request that
+        // carries neither after 15s, which surfaces as ECONNRESET.
+        const outgoing = transport.request(target, { method, headers, timeout }, collect);
 
         outgoing.setTimeout(timeout, () => {
             outgoing.destroy();
@@ -95,4 +97,4 @@ const getBuffer = async (url, options = {}) => {
     return body;
 };
 
-module.exports = { request, getJson, getBuffer, MAX_REDIRECTS };
+module.exports = { request, getJson, getBuffer, MAX_REDIRECTS, DEFAULT_TIMEOUT };

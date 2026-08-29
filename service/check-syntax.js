@@ -3,11 +3,14 @@
 // Verifies the built bundle only uses syntax — and core modules — the target
 // runtime has.
 //
-// The floor is Node 12, measured on Tizen 6.5 (v12.16.3) and confirmed on a
-// Tizen 9 set, which reports the same. What Node 12 lacks is optional
-// chaining, nullish coalescing and logical assignment, all of which arrived in
-// Node 14. Grepping cannot tell those apart from string contents, so this
-// walks the AST instead.
+// The floor is Node 12.16.3, which is what Tizen 6.0 through 8.0 run and what
+// was measured on a 6.5 set. Tizen 9.0 and 10.0 moved to 18.18.2, verified on
+// a 9.0 set; older than 6.0 is lwnode rather than mainline Node. The full
+// mapping lives in tools/matrix.js, next to the versions it selects.
+//
+// What Node 12 lacks is optional chaining, nullish coalescing and logical
+// assignment, all of which arrived in Node 14. Grepping cannot tell those
+// apart from string contents, so this walks the AST instead.
 //
 // Modules are checked here too, because syntax was not the whole floor and
 // finding that out cost an evening. `require('fs/promises')` parses perfectly
@@ -19,9 +22,15 @@
 // This is checked rather than trusted because the bundler is asked to
 // downlevel: if that ever silently stops happening, the failure would
 // otherwise appear only on the TV.
+//
+// Regular expressions are checked too. There is nothing to lower `(?<=\n)` to,
+// so the bundler emits it as written and lwnode raises SyntaxError over the
+// whole file. See tools/js-support.js.
 
 const acorn = require('acorn');
 const { readFileSync } = require('fs');
+
+const { unsupportedJs } = require('../tools/js-support.js');
 
 const UNSUPPORTED = {
     ChainExpression: 'optional chaining (?.)',
@@ -83,22 +92,36 @@ function check(file) {
         }
     })(ast);
 
-    if (!findings.length) {
-        console.log(`${file}: clean — parses and resolves on Node 12 (Tizen 6.5).`);
+    // Reported apart from the findings above: Node 12 is measured on a set,
+    // Escargot is the engine a set might turn out to be running.
+    const expressions = unsupportedJs(source, 'escargot');
+
+    if (!findings.length && !expressions.length) {
+        console.log(`${file}: clean — parses and resolves on Node 12 (Tizen 6.5), and on Escargot.`);
         return 0;
     }
 
-    const byLabel = {};
-    findings.forEach((f) => {
-        if (!byLabel[f.label]) byLabel[f.label] = [];
-        byLabel[f.label].push(f.line);
-    });
+    if (findings.length) {
+        const byLabel = {};
+        findings.forEach((f) => {
+            if (!byLabel[f.label]) byLabel[f.label] = [];
+            byLabel[f.label].push(f.line);
+        });
 
-    console.error(`${file}: ${findings.length} construct(s) Node 12 cannot run:`);
-    for (const label in byLabel) {
-        const lines = byLabel[label];
-        console.error(`  ${label} x${lines.length}  (first at line ${lines[0]})`);
+        console.error(`${file}: ${findings.length} construct(s) Node 12 cannot run:`);
+        for (const label in byLabel) {
+            const lines = byLabel[label];
+            console.error(`  ${label} x${lines.length}  (first at line ${lines[0]})`);
+        }
     }
+
+    if (expressions.length) {
+        console.error(`${file}: ${expressions.length} regular expression(s) lwnode cannot parse:`);
+        expressions.forEach((problem) => console.error(`  ${problem}`));
+        console.error('  A television running lwnode raises SyntaxError over the whole bundle,');
+        console.error('  so the service dies before it can open its port or write a log line.');
+    }
+
     return 1;
 }
 

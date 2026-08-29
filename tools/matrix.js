@@ -30,27 +30,50 @@ const { ROOT } = require('./config.js');
 // actually been read off a set are marked and the rest are covered by testing
 // the major instead of guessing which set uses it. Testing a version nothing
 // runs costs a second; missing one costs an evening.
+// Every Node this bundle has to survive, and which television runs it.
+//
+//   Tizen  Year  Chromium  V8           Runtime
+//   10.0   2026  M130      12.x / 13.x  node 18.18.2+
+//   9.0    2025  M120      12.0.267.1   node 18.18.2      · both verified on a set
+//   8.0    2024  M108      10.8         node 12.16.3, transitional
+//   7.0    2023  M94       9.4          node 12.16.3
+//   6.5    2022  M85       8.5          node 12.16.3      · verified
+//   6.0    2021  M76       7.6          node 12.16.3
+//   5.5    2020  M69       6.9          legacy lwnode snapshot
+//   5.0    2019  M63       6.3          legacy lwnode snapshot
+//   4.0    2018  M56       5.6          early lwnode
+//
+// Two mainline runtimes cover Tizen 6.0 through 10: 12.16.3 and 18.18.2. The
+// versions in between are not known to run on any television and are tested
+// regardless — a spare second each, against the alternative of finding out
+// from a set that a release does not start.
+//
+// Below Tizen 6.0 the runtime is lwnode rather than mainline Node, and an
+// lwnode snapshot does not carry a mainline version number fnm can install. So
+// nothing here tests one directly, and 10.24.1 stands in as margin beneath the
+// oldest mainline runtime. runtime.js names lwnode when it sees it, so the
+// first such set to report in will settle what its API level actually is.
 const TARGETS = [
-    { node: '10.24.1', note: 'candidate' },
-    { node: '12.16.3', note: 'measured: Tizen 6.5' },
-    { node: '14.21.3', note: 'candidate — first with require("fs/promises")' },
-    { node: '16.20.2', note: 'candidate' },
-    { node: '18.18.2', note: 'measured: Tizen 9.0' },
-    { node: '20.18.1', note: 'candidate' },
-    { node: '22.12.0', note: 'candidate' }
+    { node: '12.16.3', note: 'Tizen 6.0, 6.5, 7.0, 8.0 — verified on 6.5' },
+    { node: '14.21.3', note: 'no set runs it — first with require("fs/promises")' },
+    { node: '16.20.2', note: 'no set runs it' },
+    { node: '18.18.2', note: 'Tizen 9.0 and 10.0 — verified on 9.0' },
+    { node: '20.18.1', note: 'newer than any set — margin' },
+    { node: '22.12.0', note: 'newer than any set — margin' }
 ];
 
-// The floor check.js enforces, and the oldest runtime read off a television.
+// The oldest mainline runtime any television is known to use.
 //
 // Versions below it are still run, because knowing how far down the bundle
-// actually works is worth a second and the answer changes when somebody
-// measures an older set. They cannot fail the suite, though: a red result for
-// a runtime nothing is known to use would train everybody to ignore this.
+// actually works is worth a second — and it is not idle curiosity here, since
+// Tizen 4.0 to 5.5 run lwnode snapshots whose API level is not documented
+// anywhere in this repo. They cannot fail the suite, though: a red mark for a
+// runtime nothing is known to use is how a check stops being read.
 //
-// Lower it when a set is measured below 12, and the two things that break
-// first are already known — `flatMap` in main.js needs Node 11, and the
-// minifier emits optional catch binding, which needs Node 10.
-const FLOOR = 10;
+// The two things that break first are already known, if this ever has to drop:
+// `flatMap` in main.js needs Node 11, and the minifier emits optional catch
+// binding, which needs Node 10.
+const FLOOR = 12;
 
 const major = (version) => Number(String(version).split('.')[0]);
 

@@ -79,10 +79,19 @@ function runStep(step) {
 }
 
 function main() {
+    // Set before the config is read, so `npm run build -- --dev` and
+    // `HOMEBREW_DEV=1 npm run build` mean the same thing. The workspace builds
+    // are separate processes and inherit it; argv would not survive the hop.
+    if (process.argv.indexOf('--dev') !== -1) process.env.HOMEBREW_DEV = '1';
+
     const config = load();
 
-    ui.heading('build', `v${config.version}`);
+    ui.heading('build', `v${config.version}${config.dev ? ' · developer' : ''}`);
     ui.info('catalog', config.catalogUrl);
+
+    if (config.dev) {
+        ui.warn('developer build: the pairing PIN is 000000 and POST /dev/eval runs whatever it is sent');
+    }
 
     if (config.placeholders.length) {
         ui.warn('catalogUrl still points at an example host — fine for development, blocked by `npm run package -- --release`');

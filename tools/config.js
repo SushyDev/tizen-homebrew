@@ -55,7 +55,13 @@ function load(options) {
 
     const config = {
         version: process.env.HOMEBREW_VERSION || file.version,
-        catalogUrl: process.env.HOMEBREW_CATALOG_URL || file.catalogUrl || ''
+        catalogUrl: process.env.HOMEBREW_CATALOG_URL || file.catalogUrl || '',
+
+        // A developer build fixes the pairing PIN and opens a REPL on the
+        // service. An environment variable rather than a flag because the root
+        // build shells out to the workspace builds, and argv does not survive
+        // that while the environment does.
+        dev: process.env.HOMEBREW_DEV === '1'
     };
 
     if (!/^\d+\.\d+\.\d+$/.test(String(config.version || ''))) {
@@ -69,6 +75,15 @@ function load(options) {
     // TV that installed it has to be reinstalled to change it. Release builds
     // refuse it.
     config.placeholders = PLACEHOLDER_HOSTS.indexOf(catalogUrl.hostname) !== -1 ? ['catalogUrl'] : [];
+
+    // A developer build is the opposite of a release in the one way that
+    // matters: its PIN is 000000 and it will evaluate anything the LAN sends it.
+    if (config.dev && opts.requireReal) {
+        fail(
+            'This is a developer build (HOMEBREW_DEV=1): the pairing PIN is fixed at\n' +
+            '  000000 and the service accepts remote evaluation. It cannot be released.'
+        );
+    }
 
     if (config.placeholders.length && opts.requireReal) {
         fail(

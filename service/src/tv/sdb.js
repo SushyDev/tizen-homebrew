@@ -160,6 +160,10 @@ Session.prototype.platformVersion = function () {
 
 // The DUID identifies this specific TV; Samsung binds minted certificates to
 // it, so resigning cannot proceed without it.
+//
+// `webapis.productinfo.getDuid()` looks like a free local answer and is a
+// different number: CPCLIM2YRW7DO here against PC3JB2FQOGHRT there. This is the
+// one certificates are minted against.
 Session.prototype.getDuid = function () {
     return this.exec('shell:0 getduid', { timeout: 10000, until: (o) => o.trim().length > 0 })
         .then((out) => out.trim());
