@@ -1,0 +1,4 @@
+- fix reloading/reset of entering pin
+- back button / exit should stop the process / exit the entire program (right now it keeps running, music even runs on the tizen homescreen)
+- restart process button
+- make package sign opt in instead of opt out

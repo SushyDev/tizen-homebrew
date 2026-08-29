@@ -1,6 +1,6 @@
 {
   "name": "tizen-homebrew-service",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "On-TV install service: serves the phone UI and drives the TV's own SDB daemon.",
   "main": "src/main.js",
   "license": "GPL-3.0-only",
