@@ -51,7 +51,8 @@ const band = (tone, head, body) => html`
 const status = (state) => {
     if (state.ready === null) return band('warn', 'Starting', 'Waiting for the background service.');
 
-    if (state.ready) return band('ok', 'Ready', 'This TV can install its own apps.');
+    // Working is the ordinary state, and the log grows into the room a band saying so would hold.
+    if (state.ready) return html``;
 
     return band('warn', 'No sdb route', html`Set <span class="mono ink">Host PC IP</span> to
         <span class="mono ink">127.0.0.1</span> in Apps › 12345 › Settings, then restart the

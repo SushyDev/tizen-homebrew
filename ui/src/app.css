@@ -445,6 +445,9 @@ p { margin: 0; }
   object-fit: cover;
 }
 
+/* A section with nothing in it is not a row on either page. */
+#status:empty { display: none; }
+
 .state {
   position: relative;
   display: grid;
@@ -909,17 +912,25 @@ p { margin: 0; }
     inset 0 1px 0 rgb(255 255 255 / 55%);
 }
 
+/* A column rather than a row template, because a template would hand the stretching row to the wrong
+   section on the screens that draw no band. */
 .screen {
   --column:    5vw;
   --code-size: 4.6vw;
   --url-size:  2.2vw;
 
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-  gap: var(--lane);
+  display: flex;
+  flex-direction: column;
   height: 100%;
   padding: var(--margin-y) var(--margin-x);
+}
+
+/* A lane as a margin rather than a gap, so a section that is not drawn takes its own with it. */
+.screen > * + * { margin-top: var(--lane); }
+
+#log {
+  flex: 1;
+  min-height: 0;
 }
 
 .marquee {
