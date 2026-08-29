@@ -19,6 +19,7 @@ const { homedir } = require('os');
 
 const { startRecording, Facility } = require('./obs/log.js');
 const { size, took, host } = require('./obs/units.js');
+const runtime = require('./obs/runtime.js');
 
 // Installed before anything else can produce output worth keeping.
 const recorded = startRecording();
@@ -63,7 +64,12 @@ const start = () => {
     // The first thing in the log, and the thing every bug report needs: which
     // build is running, on what, as whom.
     svc.info(`tizen homebrew ${BUILD} starting`);
-    svc.info(`node ${process.version} on ${process.platform}/${process.arch}, pid ${process.pid}`);
+    // The engine, not just the version it claims compatibility with. Samsung
+    // ships lwnode — Node's API on Escargot rather than V8 — on some
+    // generations, and code that is fine on mainline Node of the same version
+    // can still fail there. When a set misbehaves, this line is the first
+    // thing worth knowing and the last thing anybody thinks to ask for.
+    svc.info(`${runtime.summary()}, pid ${process.pid}`);
     log.on(Facility.AUTH).info(`pairing pin ${secret} — regenerated every start`);
 
     const store = createStore({
@@ -269,8 +275,26 @@ const start = () => {
     router.on.get('/version', (_request, response) => json(response, {
         build: BUILD,
         node: process.version,
+
+        // Readable without a PIN, like the rest of this route, and worth the
+        // few hundred bytes: it is the difference between "the service is not
+        // answering" and "the service is not answering on lwnode".
+        runtime: runtime.describe(),
+
         startedAt,
-        uptimeSeconds: Math.round(process.uptime())
+        // How long *this service* has been running, which is not how long the
+        // process has. Tizen reloads the service into the same process on a
+        // reinstall — see the note in obs/log.js — so process.uptime() keeps
+        // counting across a restart the service itself experienced as a fresh
+        // start. It reported fifty-eight minutes for a service ninety-six
+        // seconds old, which is the number `push` uses to decide whether new
+        // code took, and the number a person reads to decide whether the thing
+        // they just did had any effect.
+        uptimeSeconds: Math.round((Date.now() - Date.parse(startedAt)) / 1000),
+
+        // The host process, kept separately rather than dropped: the gap
+        // between the two is the only visible sign that a reload happened.
+        processUptimeSeconds: Math.round(process.uptime())
     }));
 
     router.on.get('/health', (_request, response) => json(response, {
@@ -551,24 +575,6 @@ const start = () => {
         // turns "that felt slow" into a number.
         svc.ok(`startup finished in ${took(recorded.uptime())}`);
 
-        // A pulse, so that a service which stops answering can be told apart
-        // from one that was never asked.
-        //
-        // The failure this exists for looks like a healthy set from outside:
-        // the port accepts TCP because the kernel does that on its own, while
-        // the JS thread is blocked and no request is ever answered. From a
-        // laptop it is indistinguishable from a service that never started,
-        // which cost most of an evening. A line that stops arriving dates the
-        // moment the thread stopped, and the line before it names what was in
-        // flight at the time.
-        //
-        // Every thirty seconds, at info: two lines a minute is cheap next to
-        // an unexplained silence, and the log is read by whoever is trying to
-        // work out why the television is not answering.
-        setInterval(
-            () => svc.info(`alive — ${took(recorded.uptime())}, ${(store.select('device') || {}).ready ? 'sdb ready' : 'sdb not ready'}`),
-            30000
-        );
     });
 
     require('./socket.js').attach({ server, store, secret, authorise, installer, catalog, updates, relay, refreshDevice, config, protocol, log });

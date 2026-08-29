@@ -3,11 +3,14 @@
 // Verifies the built bundle only uses syntax — and core modules — the target
 // runtime has.
 //
-// The floor is Node 12, measured on Tizen 6.5 (v12.16.3) and confirmed on a
-// Tizen 9 set, which reports the same. What Node 12 lacks is optional
-// chaining, nullish coalescing and logical assignment, all of which arrived in
-// Node 14. Grepping cannot tell those apart from string contents, so this
-// walks the AST instead.
+// The floor is Node 12.16.3, which is what Tizen 6.0 through 8.0 run and what
+// was measured on a 6.5 set. Tizen 9.0 and 10.0 moved to 18.18.2, verified on
+// a 9.0 set; older than 6.0 is lwnode rather than mainline Node. The full
+// mapping lives in tools/matrix.js, next to the versions it selects.
+//
+// What Node 12 lacks is optional chaining, nullish coalescing and logical
+// assignment, all of which arrived in Node 14. Grepping cannot tell those
+// apart from string contents, so this walks the AST instead.
 //
 // Modules are checked here too, because syntax was not the whole floor and
 // finding that out cost an evening. `require('fs/promises')` parses perfectly
