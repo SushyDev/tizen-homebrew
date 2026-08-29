@@ -51,10 +51,8 @@ const status = (state) => {
 
     if (!device.onTv) return band('warn', 'Off device', 'Running as a development harness. Installs need real hardware.');
 
-    if (device.ready) {
-        return band('ok', 'Ready', html`This TV installs its own apps${
-            device.platformVersion ? html` · <span class="mono">Tizen ${device.platformVersion}</span>` : ''}.`);
-    }
+    // Working is the ordinary state, and the page closes up over a band saying so.
+    if (device.ready) return html``;
 
     if (device.reason === 'debugModeOff') {
         return band('warn', 'Developer mode off',

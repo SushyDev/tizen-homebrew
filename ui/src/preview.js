@@ -153,20 +153,22 @@ const history = [
 
 const televisions = [
     ['Television · the channel', televisionState],
+    ['Television · no sdb route', { ...televisionState, ready: false }],
     ['Television · the log', { ...televisionState, lines: history, view: 'logs', from: 20 }],
     ['Television · the credits', { ...televisionState, view: 'credits', from: 0 }]
 ];
 
+// The same sections tv.html carries, because app.css sizes them by name.
 const screenMarkup = (state) => html`
   <div class="sea"></div>
   <section id="overlay">${tv.overlay(state)}</section>
-  <div class="screen">
-    ${tv.masthead(state)}
-    ${tv.connect(state)}
-    ${tv.status(state)}
-    ${tv.log(state)}
-    ${tv.deck(state)}
-  </div>`;
+  <main class="screen">
+    <header id="masthead">${tv.masthead(state)}</header>
+    <section id="connect">${tv.connect(state)}</section>
+    <section id="status">${tv.status(state)}</section>
+    <section id="log">${tv.log(state)}</section>
+    <footer id="deck">${tv.deck(state)}</footer>
+  </main>`;
 
 const television = ([name, state]) => html`
   <section style="padding:1.5rem 1rem;display:grid;gap:1.25rem;justify-items:center">

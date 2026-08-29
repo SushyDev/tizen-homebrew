@@ -287,7 +287,7 @@ store.subscribe(() => {
     if (settling) fit(); else remeasure();
 });
 
-keys.focus('theme');
+keys.focus('restart');
 
 window.addEventListener('resize', remeasure);
 
