@@ -14,6 +14,8 @@ after that.
 - A dmesg-style log on the TV screen
 - An sdb shell, from the phone
 
+**Discord**: https://discord.gg/WjxVnrsV4A
+
 ---
 
 ## Install
