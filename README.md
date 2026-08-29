@@ -57,7 +57,9 @@ other machine can reach its sdb daemon.
 <table>
 <tr>
 https://raw.githubusercontent.com/SushyDev/tizen-homebrew/refs/heads/update-docs/media/tv.mp4
+
 https://user-images.githubusercontent.com/23558090/115278602-ee6f0280-a145-11eb-94ae-6edaa846ab7f.mp4
+
 <td width="75%" valign="top"><a href="media/tv.mp4"><img src="media/tv-screen.webp" alt="Watch the television screen"></a></td>
 <td width="25%" valign="top"><a href="media/phone.mp4"><img src="media/phone-apps.webp" alt="Watch the phone"></a></td>
 </tr>
