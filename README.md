@@ -20,8 +20,7 @@ after that.
 
 ## Install
 
-**Node 20+**, a Samsung TV on the same network, ten minutes. Use your TV's
-address in place of `192.168.2.9`.
+**Node 20+**, a Samsung TV on the same network, ten minutes.
 
 **1 · On the TV.** **Apps** → press **12345** (or hold Enter) → Developer mode
 **on**, **Host PC IP** = *this computer's address*. **Restart the TV.**
@@ -32,7 +31,7 @@ address in place of `192.168.2.9`.
 git clone https://github.com/SushyDev/tizen-homebrew.git
 cd tizen-homebrew
 npm install
-npm run full-bootstrap -- 192.168.2.9
+npm run full-bootstrap -- <tv-ip>
 ```
 
 It asks the TV which device it is, mints a Samsung certificate bound to it (a
@@ -159,7 +158,7 @@ updates itself. Pressing it is an ordinary install of an ordinary package that
 happens to be this one. From a working copy, over the LAN, there is still:
 
 ```sh
-npm run package && npm run push -- 192.168.2.9 <pin>
+npm run package && npm run push -- <tv-ip> <pin>
 ```
 
 ---
@@ -188,8 +187,8 @@ prompt inside the service, so a build being pushed every few minutes stops
 asking to have its PIN read off the screen:
 
 ```sh
-npm run package -- --dev && npm run push -- 192.168.2.9 000000
-npm run repl -- 192.168.2.9
+npm run package -- --dev && npm run push -- <tv-ip> 000000
+npm run repl -- <tv-ip>
 ```
 
 Every line is evaluated in the running service — `store.get()`, `await
@@ -295,7 +294,7 @@ npm test             # lint, protocol, PIN gate, install pipeline, re-signing
 
 `npm run dev` serves the TV at `/tv.html`, the phone at `/index.html`, both at
 `/preview.html`. With no TV around, `ui/dev/service.js` answers — real protocol,
-real WebSocket. Point it at hardware with `HOMEBREW_TV=192.168.2.9 npm run dev`.
+real WebSocket. Point it at hardware with `HOMEBREW_TV=<tv-ip> npm run dev`.
 
 | Path | |
 | --- | --- |
