@@ -57,11 +57,11 @@ other machine can reach its sdb daemon.
 <table>
 <tr>
 <td width="75%" valign="top">
-<video src="https://github.com/SushyDev/tizen-homebrew/raw/refs/heads/update-docs/media/tv.mp4"
+<video src="https://raw.githubusercontent.com/SushyDev/tizen-homebrew/refs/heads/update-docs/media/tv.mp4"
        controls muted loop playsinline width="100%"></video>
 </td>
 <td width="25%" valign="top">
-<video src="https://github.com/SushyDev/tizen-homebrew/raw/refs/heads/update-docs/media/phone.mp4"
+<video src="https://raw.githubusercontent.com/SushyDev/tizen-homebrew/refs/heads/update-docs/media/phone.mp4"
        controls muted loop playsinline width="100%"></video>
 </td>
 </tr>
