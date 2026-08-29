@@ -12,7 +12,12 @@
 // So uninstalling is done from the TV's own app list, and no code here
 // pretends otherwise.
 
-const { readdir, readFile } = require('fs/promises');
+// `fs.promises`, not `require('fs/promises')`. The bare specifier is a Node 14
+// addition and throws MODULE_NOT_FOUND on the floor this service targets —
+// which is Node 12, and is what the television actually runs. It cost a build
+// that installed cleanly, launched, and never opened its port, with no log to
+// say why because the service died before it could write one.
+const { readdir, readFile } = require('fs').promises;
 const { join } = require('path');
 
 const onTv = typeof tizen !== 'undefined';
