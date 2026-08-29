@@ -184,7 +184,7 @@ const main = async () => {
 
     ui.blank();
     ui.note(`This pair signs for ${devices.length === 1 ? devices[0] : `${devices.length} televisions: ${devices.join(', ')}`}.`);
-    ui.note(ui.style.dim('  npm run package                          build a widget they can install'));
+    ui.note(ui.style.dim('  npm run package -- --sign                build a widget they can install'));
     ui.note(ui.style.dim(`  npm run certs -- ${ip || '<tv-ip>'} <pin>          let a TV re-sign for itself`));
     ui.blank();
 };

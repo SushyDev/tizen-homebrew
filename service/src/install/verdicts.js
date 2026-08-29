@@ -30,7 +30,7 @@ const SIGNATURES = [
         matches: /Check certificate error/i,
         remedy: (context) => (context.replaceWith
             ? 'That package is signed for a different television, or not signed at all.\n' +
-              '`npm run package` signs one for this machine\'s TV; `npm run package -- --unsigned`\n' +
+              '`npm run package -- --sign` signs one for this machine\'s TV; `npm run package`\n' +
               'does not, and a set refuses those over sdb.'
             : 'The stored certificates do not cover this television. They have been ' +
               'cleared, so send a fresh pair — `npm run certs -- <ip> <pin>`.')

@@ -151,7 +151,7 @@ async function packageApp(certificate) {
 }
 
 async function main() {
-    const unsigned = process.argv.indexOf('--unsigned') !== -1;
+    const sign = process.argv.indexOf('--sign') !== -1;
 
     // Set before the config is read and before the rebuild, which is a separate process and inherits
         // the environment but not argv.
@@ -161,9 +161,9 @@ async function main() {
 
     const config = load({ requireReal: release });
 
-    const certificate = unsigned ? null : checkPrerequisites();
+    const certificate = sign ? checkPrerequisites() : null;
 
-    ui.heading('package', `v${config.version}${unsigned ? ' unsigned' : ''}`);
+    ui.heading('package', `v${config.version}${sign ? '' : ' unsigned'}`);
     ui.note(ui.style.dim('  building first...'));
     execFileSync('node', [join(__dirname, 'build.js')], { cwd: ROOT, stdio: 'inherit' });
 
@@ -174,18 +174,18 @@ async function main() {
         ), { isFriendly: true });
     }
 
-    ui.group(unsigned ? 'packaging' : 'signing');
+    ui.group(sign ? 'signing' : 'packaging');
     const result = await packageApp(certificate);
     ui.ok('tizen homebrew', `${ui.bytes(result.size)} · ${result.path}`, result.ms);
 
     ui.blank();
-    if (unsigned) {
-        ui.note('Packaged, signed by nobody.');
-        ui.note(ui.style.dim('This is what a release carries: an installed Tizen Homebrew re-signs it for'));
-        ui.note(ui.style.dim('the TV it runs on. A set refuses it over sdb — package without --unsigned.'));
-    } else {
+    if (sign) {
         ui.note('Packaged.');
         ui.note(ui.style.dim('Install with `npm run bootstrap -- <tv-ip>`, or sdb install release/homebrew.wgt'));
+    } else {
+        ui.note('Packaged, signed by nobody.');
+        ui.note(ui.style.dim('This is what a release carries: an installed Tizen Homebrew re-signs it for'));
+        ui.note(ui.style.dim('the TV it runs on. A set refuses it over sdb — package with --sign.'));
     }
     ui.blank();
 }
