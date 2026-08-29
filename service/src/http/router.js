@@ -1,26 +1,9 @@
 'use strict';
 
-// A router, in about sixty lines.
-//
-// This replaces express, which was 484KB of the bundle — by far its largest
-// single dependency — for method matching, one static directory and a raw
-// body. Those three things are what follows.
-
 const { json, failure } = require('./respond.js');
 const { size, took, host } = require('../obs/units.js');
 
-/**
- * Builds a router.
- *
- * Routes are matched in the order they were added, so a catch-all added last
- * behaves as a fallback. Paths may end in `/*` to match a prefix, which is all
- * the pattern matching this service has ever needed.
- *
- * `log` gets one line per request, in the order an access log has printed
- * them since NCSA httpd: who asked, what they asked for, what they got, how
- * big it was and how long it took. `quiet(request, path)` marks the requests
- * that are not events — see the note on it in main.js.
- */
+// Sixty lines in place of express, which was 484KB. Routes match in order; `/*` matches a prefix.
 const createRouter = (options) => {
     const settings = options || {};
     const log = settings.log || null;
@@ -46,15 +29,7 @@ const createRouter = (options) => {
         delete: (path, handle) => add('DELETE', path, handle)
     };
 
-    /**
-     * The listener handed to `http.createServer`.
-     *
-     * A handler may return a promise; rejecting it produces a 500 rather than
-     * an unhandled rejection that takes the service down.
-     */
     const listener = (request, response) => {
-        // Timed from the moment the head arrives rather than from the handler,
-        // so an upload's own transfer is inside the number a person reads.
         const startedAt = Date.now();
 
         if (log) {
@@ -73,7 +48,6 @@ const createRouter = (options) => {
             });
         }
 
-        // Browsers preflight the phone UI's cross-origin calls.
         if (request.method === 'OPTIONS') {
             response.writeHead(204, {
                 'access-control-allow-origin': '*',

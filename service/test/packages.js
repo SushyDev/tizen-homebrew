@@ -1,11 +1,5 @@
 'use strict';
 
-// Listing what is installed, against a television that is not here.
-//
-// The disk decides what is installed and `tizen.application` only names it, so
-// the cases that matter are the ones where the platform answers badly: slowly,
-// with an error, with a short list. None of them may cost a row.
-
 const { mkdtempSync, mkdirSync, writeFileSync } = require('fs');
 const { tmpdir } = require('os');
 const { join } = require('path');
@@ -16,8 +10,6 @@ const check = (name, ok, detail) => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  <- ${detail}`}`);
 };
 
-// A set with four packages: one whose manifest is readable, three whose are
-// not, which is the shape of a real television.
 const appsRoot = mkdtempSync(join(tmpdir(), 'homebrew-apps-'));
 
 mkdirSync(join(appsRoot, 'readable/res/wgt'), { recursive: true });
@@ -27,7 +19,6 @@ writeFileSync(join(appsRoot, 'readable/res/wgt/config.xml'),
 ['silent1', 'silent2', 'silent3'].forEach((id) => mkdirSync(join(appsRoot, id), { recursive: true }));
 mkdirSync(join(appsRoot, '.recovery'), { recursive: true });
 
-// A fresh module each time, because the naming flag is deliberately sticky.
 const load = () => {
     delete require.cache[require.resolve('../src/tv/packages.js')];
     return require('../src/tv/packages.js');
@@ -46,7 +37,6 @@ const byId = (list) => list.reduce((all, entry) => Object.assign(all, { [entry.i
 const APPS = [
     { id: 'readable.App', packageId: 'readable', name: 'Readable', version: '1.2.3' },
     { id: 'silent1.App', packageId: 'silent1', name: 'First', version: '0.9.0' },
-    // Two applications in one package: the one carrying a version wins.
     { id: 'silent2.Service', packageId: 'silent2', name: 'Second Service', version: null },
     { id: 'silent2.App', packageId: 'silent2', name: 'Second', version: '4.0.1' }
 ];
@@ -74,8 +64,6 @@ const main = async () => {
             found.readable.version === '1.2.3', JSON.stringify(found.readable));
     });
 
-    // The failure that matters: a platform answering with less than the disk
-    // holds must not shorten the list.
     await withTizen((ok) => ok([APPS[0]]), async (packages) => {
         const list = await packages.list({ appsRoot });
 
@@ -100,8 +88,6 @@ const main = async () => {
         check('a throwing device api is caught, not propagated', list.length === 4, `${list.length} rows`);
     });
 
-    // Never calling back is the shape of the getPackagesInfo failure. The
-    // deadline covers it as long as the thread still turns.
     await withTizen(() => {}, async (packages) => {
         const started = Date.now();
         const said = [];
@@ -117,7 +103,6 @@ const main = async () => {
         check('and says so once, naming the call',
             said.length === 1 && /getAppsInfo/.test(said[0]), JSON.stringify(said));
 
-        // Sticky: the second listing must not pay the deadline again.
         const again = Date.now();
         await packages.list({ appsRoot, say });
 

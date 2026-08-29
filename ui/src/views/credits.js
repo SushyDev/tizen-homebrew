@@ -1,23 +1,11 @@
-// Whose work this is made of.
-//
-// The channel is a rebuild of somebody else's screen, running on somebody
-// else's protocol, next to an app that is a rewrite of somebody else's app.
-// None of that is hidden anywhere in the interface, so it is said here,
-// on a screen a person can actually reach with the remote.
-//
-// One row is one line on the television, which is what keeps the roll
-// readable from three metres and what lets `views/television.js` window it
+// One row is one line on the television, which is what lets views/television.js window the roll
 // without measuring anything:
 //
 //   { head }              a section rule
 //   { note }              a line of prose under the entry above it
 //   { name, by, at }      the work, who made it, and where it lives
 //
-// `at` is written without a scheme. Nothing on this screen is clickable —
-// it is read off a television and typed into a phone — and `https://` in
-// front of every one of them is four characters of noise repeated forty
-// times.
-
+// `at` is written without a scheme: nothing here is clickable, it is typed into a phone.
 const CREDITS = [
     { note: 'Tizen Homebrew is assembled almost entirely out of other people’s work.' },
 

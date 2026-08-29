@@ -1,20 +1,5 @@
 'use strict';
 
-// SDB command relay.
-//
-// Pinning Developer Mode to 127.0.0.1 means sdbd accepts connections only from
-// the TV itself, which is exactly what makes the phone-driven install flow
-// work — and it also locks every other machine out of sdb entirely. This
-// relay gives that power back through the one process that is still allowed
-// to reach loopback sdbd: Tizen Homebrew.
-//
-// The client talks to Tizen Homebrew over the LAN, Tizen Homebrew talks to sdbd over
-// loopback. Full shell access, developer IP never leaves 127.0.0.1.
-//
-// This is a large escalation over "install a signed package" — it is arbitrary
-// command execution as the TV's developer user. So it is off by default,
-// requires an explicit opt-in, and every command is logged.
-
 const sdb = require('./sdb.js');
 const { ErrorCode, ProtocolError } = require('../protocol.js');
 
@@ -23,14 +8,9 @@ const MAX_TIMEOUT = 600000;
 const MAX_OUTPUT = 1024 * 1024;
 const MAX_CONCURRENT = 4;
 
-// Commands that would cut off the branch we are sitting on. Blocking them is
-// not a security boundary — anyone with the relay can trivially work around
-// it — it is a guard against the specific mistake of locking yourself out
-// with no way back in except a laptop.
+// Not a security boundary, but a guard against locking yourself out with no way back in.
 const SELF_DESTRUCTIVE = [
-    // Turning developer mode off, or pointing it elsewhere, kills the relay.
     /buxton2ctl\s+set\S*\s+system\s+db\/sdk\/develop\/(ip|mode)\b/,
-    // Removing Tizen Homebrew removes the relay itself.
     /(pkgcmd|wascmd|vd_appuninstall)\b[^\n]*\b__PACKAGE_ID__\b/
 ];
 
@@ -41,9 +21,6 @@ function isSelfDestructive(command, packageId) {
     });
 }
 
-// Transport failures reaching loopback sdbd are an expected condition, not a
-// bug in Tizen Homebrew. Translating them keeps the client's error code meaningful
-// and stops the service logging a stack trace for something routine.
 const SDB_ERROR_CODES = {
     sdbRefused: ErrorCode.SDB_REFUSED,
     sdbReset: ErrorCode.DEBUG_IP_WRONG,
@@ -72,12 +49,6 @@ Relay.prototype.setEnabled = function (enabled) {
     return this.enabled;
 };
 
-/**
- * Runs one command against loopback sdbd, streaming output as it arrives.
- *
- * `onChunk` is called with partial output so a long-running command shows
- * progress rather than appearing hung. Resolves with the full output.
- */
 Relay.prototype.exec = function (id, command, options) {
     const opts = options || {};
     const self = this;
@@ -109,8 +80,6 @@ Relay.prototype.exec = function (id, command, options) {
         ));
     }
 
-    // Clamp rather than reject, so a client asking for a silly timeout still
-    // gets a working command with a sane bound.
     const timeout = Math.min(Math.max(Number(opts.timeout) || DEFAULT_TIMEOUT, 1000), MAX_TIMEOUT);
 
     this.log(`relay exec: ${trimmed}`);
@@ -140,7 +109,6 @@ Relay.prototype.exec = function (id, command, options) {
         },
         (err) => {
             self.running.delete(id);
-            // A partial result is more useful than none when a command times out.
             if (err && err.code === 'sdbTimeout' && output) {
                 return { output, truncated, timedOut: true };
             }

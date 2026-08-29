@@ -1,20 +1,5 @@
 'use strict';
 
-// A prompt on the television.
-//
-//   npm run repl -- 192.168.2.106
-//   npm run repl -- 192.168.2.106 --pin 483920
-//   npm run repl -- 127.0.0.1 --port 8395     (against a local dev:service)
-//
-// Every line is evaluated inside the running service. Only a developer build
-// answers, and one pairs with 000000, which is what this assumes.
-//
-//   .inspect   open Node's inspector on the TV and print the DevTools URL
-//   .names     what is in scope
-//   .exit      leave
-//
-// Multi-statement input needs an explicit `return` for a value.
-
 const { createInterface } = require('readline');
 
 const ui = require('./ui.js');
@@ -87,7 +72,6 @@ const main = async () => {
             if (!body.ok) return ui.fail('inspect', body.error);
 
             ui.ok('inspector', body.alreadyOpen ? 'already open' : 'opened');
-            // Node reports 0.0.0.0, which no debugger can connect to.
             ui.note(`  ${String(body.url || '').replace(/0\.0\.0\.0|127\.0\.0\.1/, host)}`);
             return ui.note(ui.style.dim(`  or chrome://inspect › Configure › add ${host}:9229`));
         }
@@ -101,7 +85,6 @@ const main = async () => {
         return ui.fail('threw', body.error);
     };
 
-    // One at a time: a piped script otherwise sends every line before the first answer.
     let queue = Promise.resolve();
     let leaving = false;
 

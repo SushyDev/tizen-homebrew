@@ -1,18 +1,10 @@
 'use strict';
 
-// The Tizen package signature, built from PEM.
-//
-// Lifted from `tizen/src/packageSigner.js` with one change: it is handed PEM
-// certificates and a PEM key rather than a PKCS#12. That is the whole reason
-// this file exists — the upstream version reaches for node-forge to turn a .p12
-// into exactly these strings, and forge was a third of the service bundle. The
-// conversion now happens on the laptop, in tools/certificates.js.
-//
-// Everything else is upstream's, verbatim, including the two constant digests
-// and the 76-column wrapping. This produces the same bytes; a television reads
-// signatures strictly and will not say which part it disliked.
-
 const { createHash, createSign } = require('crypto');
+
+// Lifted from `tizen/src/packageSigner.js`, handed PEM rather than a PKCS#12 — forge was a third
+// of the service bundle, and the conversion now happens in tools/certificates.js. Everything else
+// is upstream's verbatim, including the two constant digests and the 76-column wrapping.
 
 const authorPropDigest = 'aXbSAVgmAz0GsBUeZ1UmNDRrxkWhDUVGb45dZcNRq429wX3X+x6kaXT3NdNDTSNVTU+ypkysPMGvQY10fG1EWQ==';
 const distributorPropDigest = '/r5npk2VVA46QFJnejgONBEh4BWtjrtu9x/IFeLksjWyGmB/cMWKSJWQl7aU3YRQRZ3AesG8gF7qGyvKX9Snig==';
@@ -33,34 +25,17 @@ const createReference = (data, uri) => {
         '</Reference>\n';
 };
 
-/**
- * Exclusive c14n of the SignedInfo above, which is one substitution.
- *
- * The general algorithm needs a DOM — sorting attributes, resolving prefixes,
- * escaping text — and that DOM was a fifth of the service bundle. None of it
- * applies to a document this file generated: the attributes are already in
- * order, the only namespace is the default one the wrapper declares, and every
- * value in it is base64 or percent-encoded, so nothing can need escaping. What
- * is left is moving the declaration onto the element being signed.
- *
- * test/signature.js compares the result against the real thing, so a shape that
- * stops being true here stops the build rather than the television.
- */
+// Exclusive c14n reduced to one substitution; test/signature.js compares the result against the real thing.
 const canonicalise = (signedInfo) => signedInfo
     .replace('<SignedInfo>', '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">')
     .replace(/\n$/, '');
 
-/** The body of a PEM certificate, wrapped as the signature XML wants it. */
 const bodyOf = (pem) => wrap(String(pem)
     .replace(/-----BEGIN CERTIFICATE-----/g, '')
     .replace(/-----END CERTIFICATE-----/g, '')
     .replace(/[\r\n]+/g, ''));
 
 class Signature {
-    /**
-     * @param {string} id AuthorSignature or DistributorSignature.
-     * @param {Array<{uri: string, data: Buffer}>} files
-     */
     constructor(id, files) {
         this.id = id;
         this.files = files;
@@ -79,7 +54,6 @@ class Signature {
             this.id === 'AuthorSignature' ? authorPropDigest : distributorPropDigest, '#prop');
     }
 
-    /** @param {{certificates: string[], key: string}} pair */
     _addKeyInfo(pair) {
         this.keyInfo = '<KeyInfo>\n<X509Data>';
 
@@ -124,7 +98,6 @@ class Signature {
             '</Signature>\n';
     }
 
-    /** Unshifts its own output into `files` and returns it, as upstream does. */
     async sign(pair) {
         this._createReferences();
         this._addKeyInfo(pair);

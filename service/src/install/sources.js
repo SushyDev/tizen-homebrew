@@ -1,11 +1,5 @@
 'use strict';
 
-// Where a package comes from.
-//
-// Five origins, one shape: each resolves to `{ archive, name }` and the
-// pipeline downstream neither knows nor cares which was used. Adding a sixth
-// means adding one entry here.
-
 const { readFileSync, existsSync, statSync } = require('fs');
 
 const { getJson, getBuffer } = require('../remote/fetch.js');
@@ -19,9 +13,6 @@ const PACKAGE_SUFFIX = /\.(wgt|tpk)$/i;
 
 const rejected = (code, message) => Object.assign(new Error(message), { code });
 
-// Where a reporter is handed in, each origin says what it resolved before it
-// spends thirty seconds downloading it — the step most likely to be slow is
-// the one that must not be silent.
 const quiet = { info: () => {}, ok: () => {}, warn: () => {}, err: () => {}, debug: () => {} };
 const reporter = (log) => (log ? log.on('pkg') : quiet);
 
@@ -32,21 +23,7 @@ const withinLimit = (archive, description) => {
     return archive;
 };
 
-/**
- * The newest published release of `owner/repo`, as GitHub describes it.
- *
- * Only public repositories work: the call is unauthenticated, so a private
- * repository is indistinguishable from a missing one — GitHub answers 404 for
- * both, and saying so is more useful than "not found".
- *
- * Drafts and prereleases are not it — `releases/latest` skips both. That is
- * what makes a release built by CI invisible until a person publishes the
- * draft, which is the one manual step in shipping one.
- *
- * Separate from the download below because it answers a second question as
- * well: `install/updates.js` asks what version an app is at without wanting
- * the twenty megabytes that go with it.
- */
+// Unauthenticated, so a private repository looks like a missing one, and `releases/latest` skips drafts.
 const latestRelease = async (repo, log) => {
     if (!OWNER_REPO.test(repo)) throw rejected('badMessage', `"${repo}" is not an owner/repo reference.`);
 
@@ -60,15 +37,10 @@ const latestRelease = async (repo, log) => {
         if (error.status === 404) {
             throw rejected('notFound', `${repo} has no published releases, or is private.`);
         }
-        // The status comes with it. A 403 from this endpoint is the rate
-        // limit — sixty an hour to a caller nobody has signed in as — and
-        // `install/updates.js` stops a run of checks on one rather than
-        // spending the rest of the catalogue on the same refusal.
         throw Object.assign(rejected('downloadFailed', error.message), { status: error.status });
     }
 };
 
-/** The package in that release, downloaded. */
 const fromGitHub = async (repo, log) => {
     const say = reporter(log);
 
@@ -108,12 +80,6 @@ const fromFile = (path, log) => {
     return { archive: readFileSync(path), name: path.split('/').pop() };
 };
 
-/**
- * Resolves an install request to bytes.
- *
- * `catalog` is deliberately recursive: a catalogue entry is a label on one of
- * the other sources, not a fourth way of fetching.
- */
 const resolve = async ({ source, reference, catalog = [], upload = null, log = null }) => {
     switch (source) {
         case 'upload':

@@ -1,25 +1,12 @@
 'use strict';
 
-// A REPL on the television, for developer builds only.
-//
-// Arbitrary code execution as the service, so it exists only in a build made with
-// HOMEBREW_DEV=1 — the bundler drops it otherwise and a release refuses to carry it.
-
 const { inspect } = require('util');
 
 const DEPTH = 2;
 const MAX_OUTPUT = 16 * 1024;
 
-// `new Function` rather than `vm`: the point is to reach into this process, and
-// lwnode has no vm module.
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
-/**
- * Splits statements from a trailing expression, so `let x = 1; x + 1` answers 2.
- *
- * The split is a guess and allowed to be wrong: a tail that will not compile as an
- * expression is not a tail, and the caller runs the source untouched instead.
- */
 const trailingExpression = (source) => {
     const body = source.trim().replace(/;$/, '');
     const at = Math.max(body.lastIndexOf(';'), body.lastIndexOf('\n'));
@@ -39,7 +26,7 @@ const trailingExpression = (source) => {
     return `${body.slice(0, at + 1)} return (${tail});`;
 };
 
-/** Compiles one line the way a REPL does: expression, statements-then-value, or statements. */
+// `new Function` rather than `vm`: the point is to reach into this process, and lwnode has no vm module.
 const compile = (source, names) => {
     const candidates = [`return (${source});`, trailingExpression(source), source].filter(Boolean);
 
@@ -60,7 +47,6 @@ const truncate = (text) => (text.length > MAX_OUTPUT
     ? `${text.slice(0, MAX_OUTPUT)}\n… ${text.length - MAX_OUTPUT} more characters`
     : text);
 
-/** Each key of `context` becomes a bare name in scope; `$` is the scope itself. */
 const createRepl = (context) => {
     const scope = { ...context };
     scope.$ = scope;
@@ -68,7 +54,6 @@ const createRepl = (context) => {
     const names = Object.keys(scope);
     const values = names.map((name) => scope[name]);
 
-    /** Runs one line and describes what happened. Never throws. */
     const evaluate = async (source) => {
         if (typeof source !== 'string' || !source.trim()) {
             return { ok: false, error: 'Nothing to evaluate.' };
@@ -94,7 +79,6 @@ const createRepl = (context) => {
         }
     };
 
-    /** Opens Node's inspector on every interface, since the debugger is never on the TV. */
     const openInspector = (port) => {
         let inspector;
 

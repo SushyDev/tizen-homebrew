@@ -1,11 +1,5 @@
 'use strict';
 
-// The startup capability probe, against a television that is not here.
-//
-// Same trick as runtime.js: hand it the process and globals an lwnode set would
-// have. Nothing in this file can otherwise be exercised on the runtime it was
-// written for.
-
 const { mkdtempSync, writeFileSync } = require('fs');
 const { tmpdir } = require('os');
 const { join } = require('path');
@@ -18,8 +12,6 @@ const check = (name, ok, detail) => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  <- ${detail}`}`);
 };
 
-// The two libraries whose namespace is not their filename, one Samsung
-// namespace, and a file that is not an extension at all.
 const extensionsDir = mkdtempSync(join(tmpdir(), 'homebrew-xwalk-'));
 
 ['libtizen.so', 'libtizen_application.so', 'libtizen_sensor.so', 'libtizen_tvaudio.so',
@@ -54,7 +46,6 @@ const main = async () => {
     {
         const facts = await platform.describe({
             proc: LWNODE,
-            // A real set mixes namespaces and constructors on the same object.
             globals: {
                 tizen: { application: {}, systeminfo: {}, TZDate: {} },
                 webapis: {
@@ -94,8 +85,6 @@ const main = async () => {
         check('the set names itself first, which is what a bug report needs',
             lines[0] === 'QE65S93DATXXN, firmware T-PTMDDEUC-0090-2130.0', lines[0]);
 
-        // productinfo also has a getDuid, and it answers with a different number
-        // from the one certificates bind to. Reading it here would be a trap.
         check('and the productinfo duid is never read',
             !JSON.stringify(facts).includes('PC3JB2FQOGHRT'), JSON.stringify(facts.identity));
 
@@ -104,8 +93,6 @@ const main = async () => {
         check('the summary names the engine facts a reader would go looking for',
             /process\.lwnode present/.test(lines[0]) && /Intl ABSENT/.test(lines[0]), lines[0]);
 
-        // A constructor is not something to call, so counting it as a namespace
-        // overstates what the set can do — TZDate is one, application is not.
         check('constructors are counted apart from namespaces',
             /5 device apis on this firmware; bound here: 2 tizen, 2 webapis, 1 constructors/.test(lines[1]),
             lines[1]);
@@ -116,8 +103,6 @@ const main = async () => {
     }
 
     {
-        // A television that does not touch its properties must not be woken by
-        // this: reading one dlopens a shared library.
         let touched = 0;
         const globals = { tizen: {}, Intl: {} };
 

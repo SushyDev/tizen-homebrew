@@ -1,12 +1,5 @@
 'use strict';
 
-// The vendored signer against the one it replaces.
-//
-// install/signature.js exists to take PEM where tizen/src/packageSigner.js takes
-// a PKCS#12, so that node-forge leaves the service bundle. Nothing else about it
-// may differ: a television reads signatures strictly and does not say which part
-// it disliked. So both sign the same files and the bytes are compared.
-
 const forge = require('node-forge');
 
 const Upstream = require('tizen/src/packageSigner.js');
@@ -48,8 +41,6 @@ const mint = () => {
     };
 };
 
-// The URIs a real .wgt produces: percent-encoded paths, which is what makes the
-// canonicalisation in signature.js a substitution rather than a DOM walk.
 const files = () => [
     { uri: 'config.xml', data: Buffer.from('<widget/>') },
     { uri: 'ui%2Fdist%2Findex.html', data: Buffer.from('<html>&amp; < > " \'</html>') },
@@ -68,8 +59,6 @@ const main = async () => {
         const name = id === 'AuthorSignature' ? 'author-signature.xml' : 'signature1.xml';
         const xmlOf = (list) => list.find((file) => file.uri === name).data.toString('utf8');
 
-        // RSA-SHA512 with PKCS#1 v1.5 padding is deterministic, so the whole
-        // document compares — signature value included.
         check(`${id} is byte-identical to the upstream signer`,
             xmlOf(theirs) === xmlOf(ours),
             `${xmlOf(theirs).length} vs ${xmlOf(ours).length} chars`);
@@ -78,8 +67,6 @@ const main = async () => {
             ours.length === files().length + 1 && ours[0].uri === name, ours.map((f) => f.uri).join(', '));
     }
 
-    // A pair holding a chain rather than one certificate: every entry has to
-    // reach the XML, in order, or the television cannot build the chain.
     {
         const pair = {
             certificates: ['-----BEGIN CERTIFICATE-----\nQUFB\n-----END CERTIFICATE-----\n',

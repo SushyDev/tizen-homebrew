@@ -1,11 +1,5 @@
 'use strict';
 
-// The developer REPL, which only ever runs where it cannot be tested by hand.
-//
-// Nothing here needs a television; what is being pinned is that a line behaves
-// the way a prompt should, and that a line which throws comes back as an answer
-// rather than as a dead service.
-
 const { createRepl } = require('../src/dev/repl.js');
 
 const results = [];
@@ -41,8 +35,6 @@ const main = async () => {
     }
 
     {
-        // The semicolons in a for-header are what the split gets wrong, so the
-        // fallback has to leave the source alone rather than mangle it.
         const it = await repl.evaluate('let t = 0; for (let i = 0; i < 4; i += 1) t += i;');
         check('a for-header is not mistaken for a trailing expression',
             it.ok && it.value === 'undefined', JSON.stringify(it));
@@ -85,8 +77,6 @@ const main = async () => {
     }
 
     {
-        // Node has one; lwnode is built without. Either answer is correct, and
-        // the failure has to name which it was.
         const opened = repl.openInspector(0);
         check('the inspector is offered or explained, never thrown',
             (opened.ok && typeof opened.url === 'string') || (!opened.ok && opened.error.length > 0),

@@ -1,31 +1,7 @@
 'use strict';
 
-// One-time bootstrap: installs Tizen Homebrew onto the TV from this machine.
-//
-//   npm run bootstrap -- 192.168.2.9
-//   npm run bootstrap -- 192.168.2.9 --replace
-//
-// Installs Tizen Homebrew and nothing else. Every other app is meant to come
-// from Tizen Homebrew itself, on the phone.
-//
-// `--replace` removes what is already installed before installing. Tizen
-// refuses to update an app whose *author* certificate has changed —
-// "install failed[118, -11], reason: Author certificate not match" — and a
-// certificate changes every time a pair is re-minted. Removing the app first
-// is the only way through that, and it cannot be done from the television's
-// own relay: taking Tizen Homebrew off a set that is pinned to 127.0.0.1
-// leaves nothing that can reach sdbd, which is why relay.js refuses it. Here
-// it is safe, because getting this far means sdbd is already answering this
-// machine.
-//
-// This is the only step that ever needs a computer. It exists because the TV
-// cannot install its first app by itself, and because Tizen Studio's `sdb` is
-// a ~1GB download for one command. Everything here speaks the ADB protocol
-// directly, over the vendored ADB client the service already uses.
-//
-// After this runs once, set the TV's developer host IP to 127.0.0.1 and this
-// script is never needed again — Tizen Homebrew handles every later install
-// from your phone.
+// Installs Tizen Homebrew onto the TV from this machine, over the vendored ADB client. `--replace`
+// removes what is installed first, which is the only way past a changed author certificate.
 
 const { readFileSync, existsSync, statSync } = require('fs');
 const { join, dirname } = require('path');
@@ -39,19 +15,14 @@ const { localAddressFor } = require('./tv.js');
 const sdb = require('../service/src/tv/sdb.js');
 const verdicts = require('../service/src/install/verdicts.js');
 
-// Where packages are staged on the TV before vd_appinstall reads them. This is
-// the directory the Tizen installer expects to find sideloaded packages in.
 const STAGING_DIR = '/home/owner/share/tmp/sdk_tools';
 
-// Must match service/src/config.js. Inside the staging directory because sdb
-// refuses to write anywhere else under share/.
+// Must match service/src/config.js. In the staging directory because sdb refuses the rest of share/.
 const HANDOFF_PATH = `${STAGING_DIR}/homebrewCerts.json`;
 
 const WGT = 'release/tizenhomebrew.wgt';
 const MANIFEST = 'config.xml';
 
-// Read from the manifest rather than hardcoded, so renaming a package can
-// never leave this installing under the wrong id.
 function packageId(manifest) {
     const match = readFileSync(join(ROOT, manifest), 'utf8')
         .match(/<tizen:application\b[^>]*\bpackage="([^"]+)"/);
@@ -59,8 +30,6 @@ function packageId(manifest) {
     return match[1];
 }
 
-// The connection advertises maxdata=4096 in its handshake, and each sync frame
-// costs an 8-byte header, so payloads have to stay comfortably under that.
 const CHUNK = 4000;
 
 function friendly(message) {
@@ -74,9 +43,6 @@ function frame(tag, value) {
     return buffer;
 }
 
-// Waits for the daemon to answer OPEN, which is when the stream has a remote
-// id and can be written to.
-/** Whether a .wgt carries the two signatures a set checks before installing. */
 async function isSigned(path) {
     try {
         const zip = await JSZip.loadAsync(readFileSync(path));
@@ -88,8 +54,6 @@ async function isSigned(path) {
     }
 }
 
-// The pair this machine holds, converted for the television, or null when there
-// is nothing to send.
 function handOffCertificates() {
     const found = certificates.locate();
 
@@ -117,7 +81,6 @@ const whenOpen = (stream) => new Promise((resolve, reject) => {
     });
 });
 
-// Pushes a buffer to `remotePath` using the ADB sync protocol.
 function push(session, remotePath, data, onProgress) {
     const client = session._client;
     const stream = client.createStream('sync:');
@@ -152,7 +115,6 @@ function push(session, remotePath, data, onProgress) {
         stream.on('data', onData);
         stream.on('error', (e) => finish(friendly(`Sync stream error: ${e.message}`)));
 
-        // SEND <path>,<mode>   — 33261 is 0100755, what the installer expects.
         const target = `${remotePath},33261`;
         stream.write(frame('SEND', Buffer.byteLength(target)));
         stream.write(Buffer.from(target));
@@ -168,7 +130,6 @@ function push(session, remotePath, data, onProgress) {
     }));
 }
 
-// The application id, as opposed to the package id vd_appinstall wants.
 function appId(manifest) {
     const match = readFileSync(join(ROOT, manifest), 'utf8')
         .match(/<tizen:application\b[^>]*\bid="([^"]+)"/);
@@ -176,9 +137,6 @@ function appId(manifest) {
     return match[1];
 }
 
-// Launches an app on the TV. POST to the applications endpoint is accepted
-// even though the rest of that API is read-only, which saves hunting for the
-// app in the TV's own list after installing.
 async function launchApp(ip, id) {
     try {
         const res = await fetch(`http://${ip}:8001/api/v2/applications/${id}`, {
@@ -191,9 +149,7 @@ async function launchApp(ip, id) {
     }
 }
 
-// Asks the TV whether an app is actually registered. This is the only
-// trustworthy confirmation available, because shell commands on this firmware
-// return no output to judge by.
+// The only trustworthy confirmation available: shell commands on this firmware return no output to judge by.
 async function confirmInstalled(ip, id, attempt) {
     const attempts = attempt || 1;
     try {
@@ -233,10 +189,8 @@ async function main() {
         throw friendly(`No package at ${WGT}\n\n  Build one first:  npm run package`);
     }
 
-    // Checked here rather than discovered from the television. An unsigned .wgt
-    // installs perfectly well over the LAN, because the set re-signs what it
-    // installs — but over sdb nothing re-signs it, and a set answers with
-    // "Check certificate error", which reads as a problem with the certificates.
+    // An unsigned .wgt installs over the LAN because the set re-signs it, but over sdb nothing does and the
+    // set answers "Check certificate error".
     if (!await isSigned(join(ROOT, WGT))) {
         throw friendly(
             `${WGT} is not signed, and sdb will not install an unsigned package.\n\n` +
@@ -251,9 +205,8 @@ async function main() {
     const device = await probe(ip);
     ui.info('model', `${device.modelName || device.model || 'unknown'}`);
     ui.info('dev mode', device.developerMode === '1' ? 'on' : 'OFF');
-    // The API's developerIP is not reported: it has been seen claiming
-    // 127.0.0.1 during a successful install from this machine. Whether sdb
-    // accepts us is established below, by connecting.
+    // The API's developerIP is not reported: it has claimed 127.0.0.1 during a successful install from this
+    // machine.
     ui.blank();
 
     if (device.developerMode !== '1') {
@@ -266,10 +219,7 @@ async function main() {
     }
 
     const session = await sdb.connect({ host: ip }).catch((err) => {
-        // sdbd accepts the socket from any address, then drops it if the
-        // developer host IP does not match. Depending on timing that surfaces
-        // as a reset, a close before the handshake, or a timeout — all of them
-        // mean the same thing here.
+        // sdbd accepts the socket from any address then drops it if the developer host IP does not match.
         if (['sdbReset', 'sdbClosed', 'sdbTimeout'].indexOf(err.code) !== -1) {
             const mine = localAddressFor(ip);
             throw friendly(
@@ -288,8 +238,8 @@ async function main() {
         if (replace) {
             const removing = Date.now();
 
-            // Nothing is checked afterwards: an app that was not installed
-            // reports failure here and that is the outcome asked for.
+            // Nothing is checked afterwards: an app that was not installed reports failure, which is the
+            // outcome asked for.
             await session.exec(`shell:0 vd_appuninstall ${packageId(MANIFEST)}`, {
                 timeout: 120000,
                 until: (out) => out.indexOf('spend time') !== -1 || out.indexOf('uninstall failed') !== -1
@@ -298,17 +248,8 @@ async function main() {
             ui.ok('removed', 'the previously installed copy', Date.now() - removing);
         }
 
-        // The distributor profile, which the television validates the package's
-        // distributor certificate against. `mint` writes it beside the
-        // certificates; without it on the TV, a correctly signed package is
-        // refused with
-        //
-        //   install failed[118, -22], reason: Security error :
-        //     :Invalid function parameter was given:<2>
-        //
-        // naming neither the profile nor the certificate. It is easy to miss
-        // because a television that has ever been set up by another tool
-        // already has one, and everything works until the certificate changes.
+        // The distributor profile `mint` writes beside the certificates. Without it on the TV a correctly
+        // signed package is refused with a security error that names neither.
         const profile = join(dirname(certificates.locate().author), 'device-profile.xml');
 
         if (existsSync(profile)) {
@@ -320,16 +261,8 @@ async function main() {
 
         const file = join(ROOT, WGT);
         const buffer = readFileSync(file);
-        // `package.wgt`, and the name is not free. vd_appinstall answers a path
-        // it does not like with
-        //
-        //   install failed[118, -22], reason: Security error :
-        //     :Invalid function parameter was given:<2>
-        //
-        // where <2> is that second argument — a message that reads like a
-        // problem with the certificate and is a problem with the filename.
-        // service/src/install/installer.js stages to the same name, and so
-        // does every other tool that installs this way.
+        // The name is not free: vd_appinstall answers a path it does not like with a security error that reads
+        // like a certificate problem.
         const remote = `${STAGING_DIR}/package.wgt`;
         const started = Date.now();
 
@@ -348,14 +281,8 @@ async function main() {
             until: verdicts.settled
         });
 
-        // One reading of what the television said, shared with the service —
-        // see service/src/install/verdicts.js. This used to keep its own copy,
-        // and the two had drifted into explaining the same refusal differently
-        // depending on which end of the wire you were standing at.
-        //
-        // `failureIn` rather than `interpret`, because a verdict is all this
-        // wants: no output at all is not a failure here, for the reason the
-        // registry check below spells out.
+        // One reading of what the television said, shared with the service. `failureIn` rather than
+        // `interpret`: no output at all is not a failure here.
         const failure = verdicts.failureIn(output, {
             packageId: packageId(MANIFEST),
             replaceWith: `npm run bootstrap -- ${ip} --replace`
@@ -369,10 +296,8 @@ async function main() {
             throw friendly(`The TV refused the package.\n\n  ${failure.line}${advice}`);
         }
 
-        // Absence of an error is not proof of success: this firmware returns
-        // no output at all for shell commands, so the check above would pass
-        // on an empty string. Confirm against the TV's own application
-        // registry instead.
+        // Absence of an error is not proof: this firmware returns no output for shell commands, so confirm
+        // against the TV's own registry.
         const installed = await confirmInstalled(ip, appId(MANIFEST));
         if (!installed) {
             throw friendly(
@@ -383,10 +308,8 @@ async function main() {
 
         ui.ok('homebrew', `${ui.bytes(statSync(file).size)} · v${installed.version || '?'}`, Date.now() - started);
 
-        // The certificates, left where the service adopts them on first start.
-        // Without this somebody has to read a PIN off the television and run
-        // `npm run certs`, which is a whole step of the README for something
-        // this script is already holding and already connected to send.
+        // Left where the service adopts them on first start, so nobody has to read a PIN off the television
+        // and run `npm run certs`.
         const handed = handOffCertificates();
 
         if (handed) {

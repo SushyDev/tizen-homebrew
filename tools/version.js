@@ -1,18 +1,5 @@
 'use strict';
 
-// Keeps the version in sync across every file that carries one.
-//
-//   npm run version              show current state, and sync anything adrift
-//   npm run version:check        fail if anything has drifted (used by CI)
-//   npm run version:set 1.2.3    set it everywhere at once
-//
-// tizen.config.json is the source of truth; everything else follows it.
-//
-// `version:set` rather than an argument to `version`: npm owns the name
-// `version` — `npm version 1.2.3` is a built-in that bumps package.json and
-// then runs the script of that name as a lifecycle hook — so the setting form
-// gets a name of its own that nothing else can mean.
-
 const { readFileSync, writeFileSync } = require('fs');
 const { join } = require('path');
 
@@ -25,24 +12,15 @@ const PACKAGE_FILES = [
     'ui/package.json'
 ];
 
-// package-lock.json carries the version four times: once at the top level and
-// once each for the root package and the two workspaces. It was missed here
-// for a while, which left every release with a lockfile a version behind the
-// package.json beside it — invisible until `npm ci` decides to care.
-//
-// Edited structurally rather than textually: a replace of `"version": "0.1.0"`
-// would rewrite half of npm's registry along with it.
+// package-lock.json carries the version four times, and is edited structurally: a replace of
+// `"version": "0.1.0"` would rewrite half of npm's registry along with it.
 const LOCK_FILES = ['package-lock.json'];
 
 const VERSION = /^\d+\.\d+\.\d+$/;
 
-// config.xml carries three unrelated version attributes: the XML declaration,
-// the widget version, and required_version. Only the widget's may be touched,
-// so the match is anchored to the <widget> element's own line.
 const WIDGET_FILES = ['config.xml'];
 const WIDGET_LINE = /^(\s*<widget\b[^>]*?\bversion=")([^"]*)(")/m;
 
-// A workspace is keyed in the lockfile by its directory, the root package by ''.
 function lockKeys() {
     return PACKAGE_FILES.map((f) => (f === 'package.json' ? '' : f.replace(/\/package\.json$/, '')));
 }
@@ -63,8 +41,6 @@ function readLockVersion(relative) {
 
     if (!found.length) return null;
 
-    // One line reports the whole file, so a disagreement inside it has to read
-    // as one.
     return found.filter((v, i) => found.indexOf(v) === i).join(' / ');
 }
 
@@ -74,8 +50,6 @@ function writeLockVersion(relative, version) {
 
     eachLockVersion(lock, (holder, field) => { holder[field] = version; });
 
-    // npm writes two-space JSON with a trailing newline; matching that leaves
-    // no diff beyond the versions themselves.
     writeFileSync(path, `${JSON.stringify(lock, null, 2)}\n`);
 }
 
@@ -86,7 +60,6 @@ function readPackageVersion(relative) {
 function writePackageVersion(relative, version) {
     const path = join(ROOT, relative);
     const raw = readFileSync(path, 'utf8');
-    // Rewrite the field textually to preserve formatting and key order.
     const updated = raw.replace(/("version"\s*:\s*")([^"]*)(")/, `$1${version}$3`);
     writeFileSync(path, updated);
 }
@@ -129,8 +102,6 @@ function main() {
     const given = args.filter((a) => a.charAt(0) !== '-');
     const requested = given.filter((a) => VERSION.test(a))[0];
 
-    // `version:set` with nothing usable is a typo, and syncing instead would
-    // be a different job done quietly under its name.
     if (set && !requested) {
         const error = new Error(given.length
             ? `${given[0]} is not a MAJOR.MINOR.PATCH version.\n  Try:  npm run version:set 1.2.3`

@@ -48,9 +48,6 @@ This is the step that makes the rest work, and no software can do it for you —
 sdbd runs a command allowlist. From here the TV installs its own apps and no
 other machine can reach its sdb daemon.
 
-**4 · On your phone.** Open Tizen Homebrew on the TV. Its screen shows an
-address and a 6-digit code; type both into your phone. Done.
-
 ---
 
 ## Using it

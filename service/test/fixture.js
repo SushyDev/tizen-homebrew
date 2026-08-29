@@ -1,27 +1,9 @@
 'use strict';
 
-// A real .wgt, built here rather than found on disk.
-//
-// The pipeline test needs a genuine Tizen package to run against: the whole
-// point of it is that `install/manifest.js` reads an identity out of a real
-// zip rather than out of a mock. It used to load `release/tizenhomebrew.wgt`,
-// which is a build artifact — gitignored, absent from every clean checkout,
-// and produced by a step that runs *after* `npm test` in CI. So the test
-// either crashed with ENOENT or silently depended on whatever happened to be
-// left in the working tree from an earlier build.
-//
-// This builds the package instead, from the application's own config.xml. The
-// file it produces is a valid zip that `identify()` reads exactly as it reads
-// a signed one — and because the manifest is the real one, the id the test
-// asserts on is the id the app actually installs under. Change the package id
-// in config.xml and this test is what tells you.
-
 const { deflateRawSync } = require('zlib');
 const { readFileSync } = require('fs');
 const { join } = require('path');
 
-// The standard CRC-32 (IEEE 802.3), which is what a zip entry carries. Node
-// has `zlib.crc32`, but only from 20.15 — and this repo supports 20.0.
 const TABLE = (() => {
     const table = new Int32Array(256);
 
@@ -40,14 +22,6 @@ const crc32 = (buffer) => {
     return (crc ^ -1) >>> 0;
 };
 
-/**
- * Packs files into a zip: header, bytes, central directory, end record.
- *
- * Entries are `{ name, contents, deflate }`. Stored is what a .wgt uses for
- * small manifests anyway and keeps this readable, but a real one deflates
- * most of what it carries — and the manifest reader has to walk *past* those
- * entries to find the one it wants, which only a deflated fixture tests.
- */
 const zipAll = (entries) => {
     const bodies = [];
     const directory = [];
@@ -99,26 +73,17 @@ const zipAll = (entries) => {
 
 const zip = (name, contents) => zipAll([{ name, contents }]);
 
-/** A 1×1 PNG. The smallest thing that is genuinely a picture. */
 const PIXEL = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
     'base64');
 
-/** The application's own package, as bytes. */
 const wgt = () => zip('config.xml', readFileSync(join(__dirname, '..', '..', 'config.xml')));
 
-/**
- * The same, with the icon its manifest names actually in it.
- *
- * Shaped like a real one: the manifest deflated and the picture stored, which
- * is what a packaging tool does — PNG does not compress twice.
- */
 const wgtWithIcon = () => zipAll([
     { name: 'config.xml', contents: readFileSync(join(__dirname, '..', '..', 'config.xml')), deflate: true },
     { name: 'icon.png', contents: PIXEL }
 ]);
 
-/** Anything that is definitely not a Tizen package. */
 const notAPackage = () => zip('readme.txt', Buffer.from('not a package', 'utf8'));
 
 module.exports = { wgt, wgtWithIcon, notAPackage, zip, zipAll, crc32, PIXEL };

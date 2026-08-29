@@ -1,14 +1,8 @@
 'use strict';
 
-// Turning a value into an HTTP reply, and a request into a body.
-//
-// Every handler in this service answers with JSON, so that is the only shape
-// worth having a helper for. Nothing here knows what Tizen Homebrew does; it only
-// knows how to finish a response.
-
 const MAX_BODY = 200 * 1024 * 1024;
 
-/** Sends `value` as JSON. CORS is open because the phone UI is a separate origin. */
+// CORS is open because the phone UI is a separate origin.
 const json = (response, value, status = 200) => {
     const payload = JSON.stringify(value);
 
@@ -20,21 +14,11 @@ const json = (response, value, status = 200) => {
     response.end(payload);
 };
 
-/**
- * Sends an error in the shape every client already expects: `{ ok, code,
- * message }`. Keeping one shape means the UI never has to guess whether a
- * failure came from the socket or from HTTP.
- *
- * `remedy` is the sentence saying what to do about it, and only the install
- * verdicts carry one — see install/verdicts.js. It is left out of the body
- * entirely when there is none, so every other reply keeps the shape it had.
- */
 const failure = (response, status, code, message, remedy) =>
     json(response, remedy
         ? { ok: false, code, message, remedy }
         : { ok: false, code, message }, status);
 
-/** Sends a file's bytes, with the content type the caller worked out. */
 const bytes = (response, buffer, contentType) => {
     response.writeHead(200, {
         'content-type': contentType,
@@ -44,12 +28,7 @@ const bytes = (response, buffer, contentType) => {
     response.end(buffer);
 };
 
-/**
- * Buffers a request body, refusing anything implausible.
- *
- * The cap matters: this endpoint accepts uploaded packages, so without a limit
- * a single request could exhaust the TV's memory.
- */
+// The cap matters: this accepts uploaded packages, and without one a request could exhaust the TV.
 const readBody = (request, limit = MAX_BODY) => new Promise((resolve, reject) => {
     const chunks = [];
     let received = 0;

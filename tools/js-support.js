@@ -1,16 +1,8 @@
 'use strict';
 
-// Regular expressions the television cannot parse. The sibling of css-support.js.
-//
-// Bundlers leave regexes alone whatever the target, so an unsupported one is a
-// SyntaxError over the whole inlined bundle rather than a degraded page.
-//
-// Two floors: Chromium 63 for the pages, Escargot for the service. lwnode does not
-// document the second, it patches around it — Samsung/lwnode inspect.js:186 and
-// :1408, repl.js:633, source_map_cache.js:61.
-
 const acorn = require('acorn');
 
+// Bundlers leave regexes alone, so an unsupported one is a SyntaxError over the whole bundle.
 const FEATURES = [
     {
         name: 'lookbehind ((?<= or (?<!)',
@@ -31,7 +23,6 @@ const FEATURES = [
         test: (pattern) => /\\k<[A-Za-z_$][A-Za-z0-9_$]*>/.test(pattern)
     },
     {
-        // Not established either way on Escargot, so it stays a pages-only rule.
         name: 'a Unicode property escape (\\p{...})',
         chromium: 64,
         escargot: null,
@@ -39,7 +30,6 @@ const FEATURES = [
     }
 ];
 
-/** Everything in one pattern that the named floor rejects. */
 const patternProblems = (pattern, flags, floor) => FEATURES
     .filter((feature) => (floor === 'chromium'
         ? feature.chromium !== null && feature.chromium > 63
@@ -49,7 +39,6 @@ const patternProblems = (pattern, flags, floor) => FEATURES
         ? `${feature.name} — Chromium ${feature.chromium}`
         : `${feature.name} — absent from Escargot, so lwnode cannot parse the file`));
 
-/** Parsed rather than grepped: a bundle is full of strings that look like regexes. */
 const expressionsIn = (source) => {
     const parse = (sourceType) => acorn.parse(source, { ecmaVersion: 2022, sourceType, locations: true });
 
@@ -90,7 +79,6 @@ const expressionsIn = (source) => {
     return found;
 };
 
-/** Everything in this JavaScript the named floor would refuse to parse. */
 const unsupportedJs = (source, floor) => {
     const problems = expressionsIn(source).flatMap(({ pattern, flags, line }) => patternProblems(pattern, flags, floor)
         .map((problem) => `${problem}  (/${pattern}/${flags} at line ${line})`));
@@ -98,7 +86,6 @@ const unsupportedJs = (source, floor) => {
     return [...new Set(problems)];
 };
 
-/** One entry each: two scripts that parse alone can fail to parse concatenated. */
 const scriptsOf = (html) => (html.match(/<script\b[^>]*>([\s\S]*?)<\/script>/g) || [])
     .map((tag) => tag.replace(/^<script\b[^>]*>/, '').replace(/<\/script>$/, ''))
     .filter((body) => body.trim());

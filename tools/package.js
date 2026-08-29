@@ -1,20 +1,5 @@
 'use strict';
 
-// Signs and packages the .wgt.
-//
-//   npm run package                signed for this machine's television
-//   npm run package -- --unsigned  signed by nobody, for Tizen Homebrew
-//
-// A signature names the television it may be installed on — the device id is
-// in the distributor certificate, and Tizen 7 enforces it — so a signed build
-// is for `npm run bootstrap` onto your own set. Tizen Homebrew re-signs
-// everything it installs, itself included, so the unsigned .wgt is the one
-// that reaches anybody else's TV. That is what a release carries; a TV will
-// not take it over sdb.
-//
-// Always builds first: packaging stale output is the kind of mistake that
-// costs an hour of confused debugging on the TV.
-
 const { execFileSync } = require('child_process');
 const {
     existsSync, mkdirSync, statSync, rmSync, cpSync, readdirSync, readFileSync, writeFileSync
@@ -28,23 +13,15 @@ const { load, ROOT } = require('./config.js');
 const { which } = require('./which.js');
 const certificates = require('./certificates.js');
 
-// What actually goes into each .wgt, named explicitly.
-//
-// tizenjs's --ignore matches basenames only, so it cannot express "keep
-// service/dist/index.js but drop service/index.js". Staging an allowlist
-// instead makes the package contents exact and auditable: nothing ships
-// unless it is listed here.
-// The sentence main.js logs in a developer build. A string literal, so the
-// minifier keeps it verbatim, which makes it a reliable mark on the artifact.
 const DEVELOPER_MARK = 'DEVELOPER BUILD — pin fixed at';
 
+// tizenjs's --ignore matches basenames only, so it cannot express "keep service/dist/index.js but
+// drop service/index.js". Staging an allowlist instead makes the package contents exact.
 const APP = {
     output: 'release/tizenhomebrew.wgt',
     include: [
         'config.xml',
         'icon.png',
-        // Vite emits both pages here: index.html for the phone, tv.html for
-        // the screen, and theme.wav beside them. config.xml points at tv.html.
         'ui/dist',
         'service/dist'
     ]
@@ -56,6 +33,9 @@ function friendly(message) {
     return error;
 }
 
+// Left to itself tizenjs signs with the stock Tizen public distributor certificate, which expired
+// in October 2022 and which no retail Samsung set ever trusted — the package builds and is refused
+// at install with "Invalid certificate chain".
 function checkPrerequisites() {
     const tizenjs = which('tizenjs');
     if (!tizenjs) {
@@ -81,19 +61,6 @@ function checkPrerequisites() {
         throw friendly(`TIZEN_AUTHOR_P12 points at a file that does not exist:\n  ${p12}`);
     }
 
-    // The distributor half matters as much as the author half, and it is the
-    // one that is easy to get wrong. Left to itself tizenjs falls back to the
-    // stock Tizen public distributor signer: a Tizen Test CA certificate that
-    // expired in October 2022, and that a retail Samsung TV never trusted in
-    // the first place. Packages signed with it build fine and are refused at
-    // install with
-    //
-    //   install failed[118, -12] Invalid certificate chain with certificate
-    //   in signature
-    //
-    // which says nothing about which of the two signatures is at fault.
-    // Samsung mints both halves together, bound to the TV's DUID, so the
-    // distributor p12 normally sits beside the author one.
     const distributor = found.distributor;
 
     const distributorPassword = found.distributorPassword;
@@ -111,9 +78,6 @@ function checkPrerequisites() {
     return { p12, password, distributor, distributorPassword, tizenjs };
 }
 
-// Copies the allowlist into an empty directory: the package as it will be
-// read. A missing entry is a build problem, not something to quietly ship
-// without.
 function stageContents(staging) {
     APP.include.forEach((relativePath) => {
         const from = join(ROOT, relativePath);
@@ -146,10 +110,8 @@ function signWith(certificate, staging, outPath) {
     }
 }
 
-// A .wgt is a zip, and the only thing tizenjs adds beyond one is the pair of
-// signature files. Same library, same options, same walk — so an unsigned
-// package differs from a signed one in exactly two entries, which is what
-// makes `install/resign.js` on the TV able to treat the two alike.
+// A .wgt is a zip, and all tizenjs adds beyond one is the pair of signature files. Same library and
+// same walk, so an unsigned package differs from a signed one in exactly two entries.
 async function zipUnsigned(staging, outPath) {
     const zip = new JSZip();
 
@@ -157,8 +119,6 @@ async function zipUnsigned(staging, outPath) {
         readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
             const path = join(directory, entry.name);
             if (entry.isDirectory()) return add(path);
-            // config.xml has to sit at the package root, so paths are stored
-            // relative to it, with the separator a zip is specified in.
             zip.file(relative(staging, path).split(sep).join('/'), readFileSync(path));
         });
     })(staging);
@@ -166,8 +126,6 @@ async function zipUnsigned(staging, outPath) {
     writeFileSync(outPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }
 
-// The certificate is null for an unsigned package, and that is the only
-// difference after staging.
 async function packageApp(certificate) {
     const staging = join(ROOT, '.package');
     const outPath = join(ROOT, APP.output);
@@ -195,32 +153,20 @@ async function packageApp(certificate) {
 async function main() {
     const unsigned = process.argv.indexOf('--unsigned') !== -1;
 
-    // Set before the config is read and before the rebuild below, which is a
-    // separate process and inherits the environment but not the flag. Without
-    // this, `npm run build -- --dev && npm run package` quietly packages the
-    // ordinary bundle the rebuild just overwrote.
+    // Set before the config is read and before the rebuild, which is a separate process and inherits
+        // the environment but not argv.
     if (process.argv.indexOf('--dev') !== -1) process.env.HOMEBREW_DEV = '1';
 
-    // A release build refuses a placeholder catalogue URL. The URL is baked
-    // into the package and every TV that installs it, so shipping the example
-    // host produces an app whose catalogue is permanently empty.
     const release = process.argv.indexOf('--release') !== -1;
 
     const config = load({ requireReal: release });
 
-    // Before the build, so a missing certificate costs a second rather than
-    // the whole build.
     const certificate = unsigned ? null : checkPrerequisites();
 
-    // Build first so the package can never contain stale bundles.
     ui.heading('package', `v${config.version}${unsigned ? ' unsigned' : ''}`);
     ui.note(ui.style.dim('  building first...'));
     execFileSync('node', [join(__dirname, 'build.js')], { cwd: ROOT, stdio: 'inherit' });
 
-    // Belt to config.js's braces. That refuses HOMEBREW_DEV=1 outright and is
-    // what actually catches this, since packaging rebuilds first and a rebuild
-    // without the variable cannot produce a developer bundle. This reads the
-    // artifact anyway, because it is the artifact that gets zipped.
     if (release && readFileSync(join(ROOT, 'service/dist/index.js'), 'utf8').indexOf(DEVELOPER_MARK) !== -1) {
         throw Object.assign(new Error(
             'That bundle is a developer build: it pairs with 000000 and evaluates what the\n' +

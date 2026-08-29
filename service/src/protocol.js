@@ -1,13 +1,8 @@
 'use strict';
 
-// Wire protocol between the phone UI and the on-TV service.
-//
-// The reference implementation used a bare integer enum (TizenBrewInstaller
-// utils/wsCommunication.js) with no payload validation, which made a missing
-// `break` in the service's switch silently destructive. Events are strings
-// here and every inbound message is validated before it reaches a handler.
+// Every inbound message is validated: the reference implementation's bare integer enum made a
+// missing `break` in a switch silently destructive.
 
-// Client -> service.
 const Inbound = {
     HELLO: 'hello',                 // { pin }
     GET_STATE: 'getState',          // -
@@ -21,7 +16,6 @@ const Inbound = {
     RELAY_EXEC: 'relayExec'         // { id, command, timeout? }
 };
 
-// Service -> client.
 const Outbound = {
     HELLO: 'hello',                 // { ok, needsPin }
     STATE: 'state',                 // DeviceState
@@ -36,23 +30,6 @@ const Outbound = {
     RELAY_END: 'relayEnd'           // { id, output, truncated? }
 };
 
-// A CatalogEntry carries what the television knows about the app as well as
-// what the catalogue said about it: `installed` is the version on this set or
-// null, `available` the version a release would give it, `checked` whether
-// anybody has asked yet, and `update` whether the second is newer than the
-// first. Only the first of those is free — see install/updates.js — so
-// `checkUpdates` is what fills the rest in, for one entry or for all of them,
-// and answers with a fresh CATALOG.
-
-// An `identity` — on a progress message and on the packages in a directory
-// listing — is what `install/preview.js` read out of the archive itself:
-// `{ packageId, appId, name, version, isWgt, icon }`, where `icon` is the
-// application's own icon as a data URI. It is always optional. A package
-// whose manifest cannot be read still installs; it just arrives on screen as
-// the filename it came in as.
-
-// Install lifecycle. The UI renders these in order; each is entered exactly
-// once per attempt so a stuck install is visible rather than silent.
 const Phase = {
     PROBING: 'probing',
     FETCHING: 'fetching',
@@ -61,16 +38,7 @@ const Phase = {
     INSTALLING: 'installing'
 };
 
-// Error codes are stable identifiers; the UI maps them to translated strings.
-//
-// Every code the service can throw belongs here, including the ones only the
-// install sequence produces. `sdbUnreachable` did not, for a while: pipeline.js
-// threw it, the UI had a string ready for it, and the one list that was
-// supposed to be the register of them all did not know it existed.
-//
-// The install verdicts below the line are decided in one place —
-// install/verdicts.js — which is also where the sentence explaining each one
-// to a person lives. This end of it is only the name.
+// Stable identifiers the UI maps to translated strings; every code the service throws belongs here.
 const ErrorCode = {
     BAD_MESSAGE: 'badMessage',
     UNAUTHORIZED: 'unauthorized',
@@ -88,7 +56,6 @@ const ErrorCode = {
     LOCKED_OUT: 'lockedOut',
     INTERNAL: 'internal',
 
-    // What a television says about a package it will not install.
     INSTALL_FAILED: 'installFailed',
     CERT_REJECTED: 'certRejected',
     AUTHOR_MISMATCH: 'authorMismatch',
@@ -106,8 +73,6 @@ function ProtocolError(code, message) {
 
 const INSTALL_SOURCES = ['catalog', 'github', 'url', 'file'];
 
-// Returns { type, payload } or throws a ProtocolError. Validation is
-// deliberately strict: an unrecognised type is an error, not a fallthrough.
 function parse(raw) {
     let msg;
     try {

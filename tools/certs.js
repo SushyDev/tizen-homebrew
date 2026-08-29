@@ -1,19 +1,5 @@
 'use strict';
 
-// Sends this machine's signing certificates to a television.
-//
-//   npm run certs -- 192.168.2.9 <pin>
-//   npm run certs -- 192.168.2.9 <pin> --forget
-//
-// A Tizen package names the device it may be installed on, so from Tizen 7 a
-// package signed anywhere else is refused. Tizen Homebrew answers that by
-// re-signing what it installs — but only if it is holding a certificate pair
-// minted for the television it is running on. This is how the pair gets there.
-//
-// It goes over the same PIN-gated HTTP the installer uses, so it works after
-// the developer host IP has been pinned to loopback, which is the state a set
-// spends its life in.
-
 const { readFileSync, existsSync } = require('fs');
 const { join } = require('path');
 const { homedir } = require('os');
@@ -26,6 +12,7 @@ const DEFAULT_DIR = join(homedir(), '.tizen-certs');
 
 const friendly = (message) => Object.assign(new Error(message), { isFriendly: true });
 
+// Sends this machine's signing certificates over the same PIN-gated HTTP the installer uses.
 const main = async () => {
     const args = process.argv.slice(2);
     const [ip, pin] = args.filter((argument) => argument[0] !== '-');
@@ -39,8 +26,6 @@ const main = async () => {
         );
     }
 
-    // Everything about the pair on this machine: where it is, and the one
-    // password that opens both halves.
     const gather = () => {
         const authorPath = process.env.TIZEN_AUTHOR_P12 || join(DEFAULT_DIR, 'author.p12');
         const distributorPath = process.env.TIZEN_DISTRIBUTOR_P12 || join(authorPath, '..', 'distributor.p12');
@@ -64,9 +49,6 @@ const main = async () => {
             );
         }
 
-        // Converted here, not on the television: turning a .p12 into PEM needs
-        // an ASN.1 parser, and keeping one out of the service bundle is worth a
-        // third of its size.
         return {
             author: certificates.asPem(readFileSync(authorPath), password),
             distributor: certificates.asPem(readFileSync(distributorPath), password),
@@ -108,18 +90,12 @@ const main = async () => {
 
     const result = await ask('POST', gather());
 
-    // A pair can name several televisions, and which ones is the whole
-    // question when an install is refused — so all of them are printed.
     const named = (result.devices && result.devices.length ? result.devices : [result.device])
         .filter(Boolean);
 
     ui.ok('stored', named.join(', ') || 'an unnamed device');
 
     if (result.matchesThisTv === false) {
-        // The television knows both halves of this — it read its own DUID off
-        // sdbd over loopback before answering — so both are named here. The
-        // alternative was sending somebody to `npm run duid`, which on a set
-        // pinned to loopback can only read the certificate back to them.
         ui.warn(result.thisTv
             ? `these certificates name ${named.join(', ') || 'nothing'}, but this television is ${result.thisTv} — installs will be refused`
             : 'these certificates name a different television — installs will be refused');

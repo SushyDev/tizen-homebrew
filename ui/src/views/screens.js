@@ -1,32 +1,8 @@
-// Every screen of the phone UI, as a function of state.
-//
-// Each export takes the whole state and returns markup. None touches the DOM
-// or knows when it will run, which is what makes them readable in isolation
-// and renderable side by side in the preview harness.
-//
-// The layout rule throughout: prose in the UI face, and anything the machine
-// produced — an id, a version, a size, a path, a port — in monospace. That
-// split is the identity, and it also happens to tell a reader instantly which
-// half of the screen is a fact and which is an explanation.
-//
-// Class names here are the vocabulary defined in app.css and nothing else.
-// There are no utility classes to compose, because the television's engine
-// silently drops half of what a utility framework emits — and the phone page
-// and the TV page are the same stylesheet.
-//
-// `data-focus` is on everything a person can reach. On this page it is only
-// used when a keyboard is driving; on the television it is what the direction
-// keys search. Marking it in both places costs an attribute and means the
-// phone UI is navigable from a remote if anyone ever points one at it.
+// Prose in the UI face, anything the machine produced in monospace, and `data-focus` on everything reachable.
 
 import { html } from '../core/view.js';
 import { wordmark } from './television.js';
 
-// ── The bar ───────────────────────────────────────────────────────────
-
-// The same wordmark the television carries, at the size a phone can hold.
-// Beside it, the two things about this page rather than about the TV: whether
-// the socket is up, and whether the channel theme is playing.
 const masthead = (state) => html`
   <div class="bar">
     ${wordmark()}
@@ -38,18 +14,7 @@ const masthead = (state) => html`
     </span>
   </div>`;
 
-// ── Pairing ───────────────────────────────────────────────────────────
-
-// The only thing on screen until it is done — nothing else here works without
-// it, so offering anything else would just be something to fail at.
-//
-// The field is dressed as the other half of the code shown on the TV: same
-// recess, same edge, same aqua. You are copying something across a room, and
-// the two ends should look like the same object.
-//
-// While a remembered code is being offered there is nothing to type, so the
-// field is not shown: putting one up for the half second that takes invites
-// somebody to start typing into a form that is about to be replaced.
+// The only thing on screen until it is done, dressed as the other half of the code shown on the TV.
 const pairing = (state) => (state.restoring ? html`
   <div class="state state-warn">
     <span class="state-head">Pairing</span>
@@ -73,9 +38,6 @@ const pairing = (state) => (state.restoring ? html`
         : ''}
   </div>`);
 
-// ── State ─────────────────────────────────────────────────────────────
-
-// Readiness reads before any word does, from the band alone.
 const status = (state) => {
     const { device } = state;
 
@@ -99,60 +61,26 @@ const status = (state) => {
             html`Turn it on in Apps › 12345 › Settings, then restart the TV.`);
     }
 
-    // The current developer IP is deliberately not quoted. The device API has
-    // been caught reporting 127.0.0.1 while sdbd accepted only another machine
-    // — printing it states something that may simply be false.
+    // The current developer IP is deliberately not quoted: the device API has reported 127.0.0.1 while sdbd
+    // accepted only another machine.
     return band('warn', 'No sdb route',
         html`Set <span class="mono ink">Host PC IP</span> to <span class="mono ink">127.0.0.1</span>
              in Apps › 12345 › Settings, then restart the TV — that value is only read at startup.`);
 };
 
-// ── An app, as itself ─────────────────────────────────────────────────
-
-// Everything below this line exists because a package arrives named after the
-// file it came in rather than after what it is. `download (2).wgt` is a fact
-// about somebody's browser; the name, version, id and icon inside the archive
-// are facts about the application, and the service reads them back out of
-// every source it can — see install/preview.js, and core/package.js for the
-// upload, which is the one case where the phone has the bytes and the TV does
-// not. Both hand back the same shape, so one card renders either.
-
-// Bytes, at the precision somebody scanning a list of files wants — which is
-// one decimal at megabytes and none at all below that.
 const weight = (bytes) => (bytes >= 1024 * 1024
     ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
     : `${Math.round(bytes / 1024)} KB`);
 
-// The stand-in for artwork, and the reason a missing icon costs nothing: a
-// tile with a letter in it is a shape of the right size in the right place,
-// so a list of apps where half have logos does not look like a list with
-// holes in it.
 const monogram = (name) => String(name || '?').trim().charAt(0) || '?';
 
-// The letter is painted first and the art over the top of it. That ordering
-// is what makes the fallback free: an icon that 404s — a catalogue entry
-// whose repository has no logo.png — is removed from the page by view.js and
-// the letter that was always behind it is simply what is left.
 const tile = (app, hero = false) => html`
   <span class="tile${hero ? ' tile-hero' : ''}">
     <span class="tile-mark">${monogram(app.name || app.packageId)}</span>
     ${app.icon ? html`<img class="tile-art" src="${app.icon}" alt="">` : ''}
   </span>`;
 
-/**
- * One package, shown as the thing it is.
- *
- * `app` is `{ name, version, packageId, icon }` from wherever it was read;
- * every field is optional, and the card degrades a field at a time rather
- * than all at once. `below` is the line under the name — a description in the
- * catalogue, an id and a filename on a stick, a size on an upload — because
- * that is the one part each screen has a different answer for.
- *
- * Spans throughout, carrying `display: grid` from their classes. A row on a
- * USB stick is a `<button>`, whose content model is phrasing content only, so
- * a `<div>` in here would be invalid the moment this card was used for the
- * screen it was most obviously needed on.
- */
+// Spans throughout: a USB row is a `<button>`, whose content model is phrasing content only.
 const identity = (app, below = '', hero = false) => html`
   <span class="ident">
     ${tile(app, hero)}
@@ -164,8 +92,6 @@ const identity = (app, below = '', hero = false) => html`
       ${below}
     </span>
   </span>`;
-
-// ── Tabs ──────────────────────────────────────────────────────────────
 
 const TABS = [
     ['catalog', 'apps'],
@@ -183,8 +109,6 @@ const tabs = (state) => html`
               data-focus="tab:${id}" data-on-click="tab:${id}">${label}</button>`)}
   </div>`;
 
-// ── Panels ────────────────────────────────────────────────────────────
-
 const section = (label, body, footer = '') => html`
   <div class="glass pad stack stack-snug">
     <span class="label">${label}</span>
@@ -192,25 +116,9 @@ const section = (label, body, footer = '') => html`
     ${footer}
   </div>`;
 
-// ── The catalogue ─────────────────────────────────────────────────────
-//
-// A row has to answer three things at a glance: is this app on the TV, what
-// version, and is there a newer one. The first two are free — the service
-// reads them off the television's own package list every time it sends the
-// catalogue. The third costs a request to GitHub per app, so it is not
-// asked for until somebody presses `check`; see install/updates.js for why
-// a two-hundred-app catalogue must not answer it on the way to the screen.
-//
-// So `checked` matters as much as `update` does. A row nobody has asked
-// about and a row whose app has no releases both have no update to offer,
-// and they mean entirely different things to the person looking at them.
-
-// The line under the name.
 const catalogued = (app) => {
     if (!app.installed) return html`<span class="small truncate">${app.description || app.source.ref}</span>`;
 
-    // Installed, so the versions are the fact worth the line. The one on
-    // offer is beside the name already; this is the one it would replace.
     const held = html`<span class="mono">${app.installed}</span>`;
 
     if (app.update) {
@@ -222,13 +130,6 @@ const catalogued = (app) => {
         : ''}</span>`;
 };
 
-// What pressing the end of the row does.
-//
-// An app that is not here installs. An app that is here updates, and the
-// button is blocked until there is something to update to — which is a
-// different state from "no update exists" only in the line underneath, and
-// deliberately so: the button says what it would do, and the text says
-// whether it can.
 const action = (app) => (app.installed
     ? html`<button class="btn ${app.update ? 'btn-signal' : 'btn-ghost'}"
                    data-focus="app:${app.id}" data-on-click="install:catalog:${app.id}"
@@ -236,9 +137,6 @@ const action = (app) => (app.installed
     : html`<button class="btn btn-ghost" data-focus="app:${app.id}"
                    data-on-click="install:catalog:${app.id}">install</button>`);
 
-// One app's own check, for the row somebody is actually looking at. Only
-// where there is somewhere to ask: a `url` app is whatever the catalogue
-// says it is and no request would tell anybody more.
 const recheck = (app, checking) => (app.source.type !== 'github' ? '' : html`
   <button class="btn btn-quiet" data-focus="check:${app.id}" data-on-click="check:${app.id}"
           ${checking ? 'disabled' : ''}>${checking === app.id ? 'checking…' : 'check'}</button>`);
@@ -262,14 +160,7 @@ const catalog = (state) => section('Available', state.catalog.length === 0
         ? 'checking…' : 'check all'}</button>
     </span>`);
 
-// What the well says once something has been dropped in it.
-//
-// A filename and a size is what the browser knows; the archive knows what the
-// application is called, what version it is and what it will install as, and
-// it is sitting right here on the phone. So it is opened — core/package.js —
-// and the well shows the app. The filename does not disappear: it is the
-// thing somebody recognises from their downloads folder, and it moves to the
-// line underneath where it belongs.
+// The archive is on the phone already, so it is opened and the well shows the app rather than the filename.
 const chosen = (state) => {
     if (!state.file) {
         return html`
@@ -279,8 +170,6 @@ const chosen = (state) => {
 
     const app = state.identity || { name: state.file.name };
 
-    // The filename only appears down here once the name above is the app's
-    // own; while it is still the heading, printing it twice says nothing.
     const facts = [
         state.identity && state.identity.packageId,
         state.identity && state.file.name,
@@ -322,10 +211,6 @@ const fromUrl = (state) => remoteSource({
     hint: 'Must be https.', value: state.url
 });
 
-// A directory is a path and nothing else. A package is an application, and
-// the service opened it far enough to say which one — so the row shows the
-// app, with the filename demoted to the line beneath it where it is still
-// the thing somebody recognises but no longer the only thing on offer.
 const usb = (state) => section('Attached storage', html`
     <span class="mono small truncate">${state.usbPath}</span>
     <div class="list">
@@ -376,8 +261,6 @@ const PANELS = { catalog, upload, github: fromGitHub, url: fromUrl, usb, relay }
 
 const panel = (state) => PANELS[state.tab](state);
 
-// ── Outcome ───────────────────────────────────────────────────────────
-
 const PHASES = ['probing', 'fetching', 'resigning', 'staging', 'installing'];
 
 const PHASE_WORDS = {
@@ -393,10 +276,6 @@ const outcome = (state) => {
         const step = PHASES.indexOf(state.phase) + 1;
         const app = state.identity;
 
-        // The detail is the reference somebody typed until the package has
-        // been opened, and the package's own name afterwards — at which point
-        // the card above is already showing it, and repeating it in the
-        // counter is one screen saying the same word twice.
         const named = app && (app.name || app.packageId);
         const detail = state.phaseDetail && state.phaseDetail !== named
             ? ` · ${state.phaseDetail}`
@@ -414,10 +293,8 @@ const outcome = (state) => {
     }
 
     if (state.error) {
-        // Three lines, in the order somebody actually needs them: what went
-        // wrong, what the television itself said, and what to do about it.
-        // The last is absent for failures nothing has a cure for, and that is
-        // better than a sentence invented to fill the space.
+        // What went wrong, what the television said, and what to do about it — the last absent when nothing
+        // has a cure.
         return html`
           <div class="state state-fault">
             <span class="state-head">Failed</span>
@@ -428,10 +305,6 @@ const outcome = (state) => {
     }
 
     if (state.done) {
-        // Whatever was read out of the archive, where anything was — it has
-        // the icon, and the identity the television just installed under is
-        // the one worth showing back. The outcome itself is the fallback, and
-        // carries the same four fields under different circumstances.
         const app = state.identity || state.done;
 
         return html`

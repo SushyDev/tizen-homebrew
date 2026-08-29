@@ -6,22 +6,10 @@ import { sea } from './scene/sea.js';
 import { masthead, pairing, status, tabs, panel, outcome } from './views/screens.js';
 import * as tv from './views/television.js';
 
-// Every screen, side by side, with representative state.
-//
-// The real interface hides most of itself behind a PIN and the rest behind a
-// television, which makes it impossible to judge as a whole while building
-// it. This exists so the design can actually be *looked at* — which is the
-// step whose absence produced the first version.
-//
-// It renders the same view functions the real pages do, so there is no second
-// copy of any screen to drift out of date. The one thing it adds is the
-// television's frame, and that is not decoration — see below.
-
-// Stand-in artwork. There is no network here and no package to open, and what
-// needs looking at is whether a tile holds its frame and a row of them holds
-// together — not whose logo happens to be in it. One app is deliberately left
-// without any, because a catalogue logo is guessed rather than declared and
-// the monogram is the ordinary case.
+// Every screen side by side, rendering the same view functions the real pages do. The television
+// is in an iframe at its true 1920x1080 because every size on that page is a fraction of the
+// viewport, and a viewport unit in this document would resolve against the browser window — which
+// is precisely how a screen full of 17px text reached the living room.
 const artwork = (letter, top, bottom) => `data:image/svg+xml;base64,${btoa(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
     '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">' +
@@ -35,8 +23,6 @@ const TUBE = artwork('Y', '#ff4d4d', '#9b0000');
 const JELLYFIN = artwork('J', '#aa5cd6', '#00a4dc');
 const HOMEBREW = artwork('H', '#7fe3ff', '#0a5f80');
 
-// What the service read out of the package it is installing: the same shape
-// whichever end read it — see install/preview.js and core/package.js.
 const IDENTITY = {
     packageId: 'tUb3Xq7Lm9', appId: 'tUb3Xq7Lm9.Tube', name: 'YouTube',
     version: '0.1.0', isWgt: true, icon: TUBE
@@ -45,13 +31,6 @@ const IDENTITY = {
 const base = {
     connection: 'connected', paired: true, pin: '', pinError: null, restoring: false, themeOn: true,
     device: { onTv: true, ready: true, platformVersion: '6.5' },
-    // Every state a catalogue row can be in, in the order they are worth
-    // looking at: an update waiting, an app that is here and current, one
-    // installed that nobody has checked yet, and one that is not here at all.
-    // Only the first two of those can be told apart by the button — the third
-    // is blocked for a different reason, and the line underneath is the only
-    // place that says so. See install/updates.js for which of these facts is
-    // free and which costs a request.
     catalog: [
         { id: 'homebrew', name: 'Tizen Homebrew', version: '0.2.0', installed: '0.1.0', available: '0.2.0', checked: true, update: true, description: 'This app. Updates itself.', icon: HOMEBREW, source: { type: 'github', ref: 'SushyDev/tizen-homebrew' } },
         { id: 'tube', name: 'YouTube', version: '0.1.0', installed: '0.1.0', available: '0.1.0', checked: true, update: false, description: 'YouTube without the advertisements', icon: TUBE, source: { type: 'github', ref: 'SushyDev/tube' } },
@@ -76,22 +55,13 @@ const scenes = [
     ['Rejected', { ...base, paired: false, pinError: 'That PIN did not match.' }],
     ['Rejected · remembered', { ...base, paired: false, pinError: 'The TV has restarted, so its PIN has changed.' }],
     ['Ready', base],
-    // Mid-check: every control that could start a second one is out, and the
-    // row being asked about says which it is.
     ['Checking', { ...base, checking: 'jellyfin' }],
     ['Not ready', { ...base, device: { onTv: true, ready: false, reason: 'sdbUnreachable' } }],
-    // The three states a chosen file passes through: named by the browser,
-    // being read, and read. The middle one lasts about a tenth of a second on
-    // a phone and is still worth a scene — it is where the card first appears,
-    // and it must not appear as a jump.
     ['Upload · chosen', { ...base, tab: 'upload', file: { name: 'download (2).wgt', size: 2528154 } }],
     ['Upload · reading', { ...base, tab: 'upload', reading: true, file: { name: 'download (2).wgt', size: 2528154 } }],
     ['Upload · read', { ...base, tab: 'upload', file: { name: 'download (2).wgt', size: 2528154 }, identity: IDENTITY }],
     ['Installing', { ...base, phase: 'installing', phaseDetail: 'YouTube', identity: IDENTITY }],
     ['Installed', { ...base, identity: IDENTITY, done: { name: 'YouTube', packageId: 'tUb3Xq7Lm9', version: '0.1.0' } }],
-    // Three lines: what went wrong, what the television said, what to do. The
-    // last is the one worth looking at — it wraps to four on a phone, and the
-    // point of previewing it is that it has to stay readable there.
     ['Failed', { ...base, error: {
         title: 'A different build of this app is already installed.',
         detail: 'app_id[tUb3Xq7Lm9] install failed[118, -11], reason: Author certificate not match :',
@@ -103,8 +73,6 @@ const scenes = [
     ['Shell', { ...base, tab: 'relay' }]
 ];
 
-// The scene's own name, set in the signal colour so the harness is never
-// mistaken for part of the interface.
 const caption = (name) => html`<div class="label" style="color:var(--signal)">${name}</div>`;
 
 const phone = ([name, state]) => html`
@@ -118,20 +86,6 @@ const phone = ([name, state]) => html`
       ${state.paired ? outcome(state) : ''}
     </main>
   </section>`;
-
-// ── The television ───────────────────────────────────────────────────────
-//
-// In an iframe at its true 1920×1080, scaled down to fit.
-//
-// The iframe is the point, not decoration: every size on the TV page is a
-// fraction of the viewport, and a viewport unit inside *this* document would
-// resolve against the browser window instead of the television. Only a real
-// nested viewport of the right size tells the truth — and getting this wrong
-// is precisely how a screen full of 17px text reached the living room.
-//
-// The sea cannot come with it: it is mounted by a script this frame does not
-// run. So the frame paints the same gradient from the same custom properties,
-// which is the one duplication in this file and is confined to one line.
 
 const televisionState = {
     url: 'http://192.168.2.9:8091',
@@ -149,11 +103,6 @@ const televisionState = {
     ].map(([t, facility, level, text]) => ({ t, facility, level, text }))
 };
 
-// A real log, at the length one actually reaches: a boot, a phone arriving, a
-// package fetched and installed, and one that the television refused. Every
-// line here is one the service or the page genuinely writes — the console is
-// impossible to judge against four tidy lines, and this is the screen most
-// likely to be looked at on the evening something is wrong.
 const history = [
     [3, 'svc', 'info', 'tizen homebrew 20260828-1 starting'],
     [4, 'svc', 'info', 'node v4.4.3 on linux/armv7l, pid 4127'],
@@ -202,11 +151,6 @@ const history = [
     [180502, 'dev', 'info', 'sdbd only reads that value at startup, which is why the restart is not optional']
 ].map(([t, facility, level, text]) => ({ t, facility, level, text }));
 
-// The television three ways: the channel, and each of the two screens that
-// open over it. The overlays are rendered into a section that sits *before*
-// the screen, exactly as tv.html orders them — app.css hides the channel
-// with an adjacent-sibling rule, so getting that order wrong here would
-// preview a screen the television never shows.
 const televisions = [
     ['Television · the channel', televisionState],
     ['Television · the log', { ...televisionState, lines: history, view: 'logs', from: 20 }],
@@ -234,9 +178,6 @@ const television = ([name, state]) => html`
     </div>
   </section>`;
 
-// The harness gets the real ocean behind it too — partly because every screen
-// below is translucent and would otherwise be judged against nothing, and
-// partly because the bubbles are the thing most worth watching while tuning.
 sea();
 
 document.getElementById('preview').innerHTML =

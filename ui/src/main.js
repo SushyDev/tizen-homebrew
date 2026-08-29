@@ -9,15 +9,6 @@ import { sea } from './scene/sea.js';
 import { theme } from './scene/theme.js';
 import { masthead, pairing, status, tabs, panel, outcome } from './views/screens.js';
 
-// The phone half of Tizen Homebrew, assembled.
-//
-// Read top to bottom: what it remembers, what the TV says, what a tap does.
-// The views are pure functions of the state below, so nothing in this file
-// touches the DOM either — it only ever moves the state and lets the render
-// follow.
-
-// The message names the service speaks. Kept as one object so a typo is a
-// missing key rather than a string that silently never matches.
 const Send = {
     hello: 'hello',
     state: 'getState',
@@ -29,15 +20,8 @@ const Send = {
     relayExec: 'relayExec'
 };
 
-// What each error code means to someone holding a phone, rather than what it
-// means to the service.
-//
-// Titles only, and deliberately: these are the strings that would be
-// translated, so they say what happened and never what to do about it. What to
-// do arrives with the failure as `remedy`, from service/src/install/verdicts.js
-// — it names the package to remove or the command to run, and neither can be
-// known here. The codes come from protocol.js; every one of them belongs in
-// this table, because a code with no entry renders as a bare "Failed."
+// Titles only: what to do about a failure arrives with it as `remedy`. A code with no entry here renders as a
+// bare "Failed."
 const EXPLANATIONS = {
     unauthorized: 'Enter the PIN shown on the TV first.',
     lockedOut: 'Too many incorrect PINs.',
@@ -55,7 +39,6 @@ const EXPLANATIONS = {
     relayDisabled: 'The command relay is off.',
     internal: 'Something went wrong.',
 
-    // What a television says about a package it will not install.
     installFailed: 'The TV rejected the install.',
     certRejected: 'The TV rejected the certificate; it has been cleared.',
     authorMismatch: 'A different build of this app is already installed.',
@@ -64,9 +47,6 @@ const EXPLANATIONS = {
     privilegeTooHigh: 'That app asks for more than this TV will grant.'
 };
 
-// The last PIN that paired this phone with this TV, if there is one. It is
-// offered on connect rather than asked for again — see core/pairing.js for
-// what is kept, and for when it is dropped.
 const known = remembered();
 
 const store = createStore({
@@ -75,11 +55,8 @@ const store = createStore({
     pin: known,
     pinError: null,
 
-    // The PIN this phone is waiting on an answer for, and whether it came from
-    // memory rather than from somebody typing it. The first tells a refusal
-    // apart from the greeting — see the hello reaction, where the service
-    // sends the same frame for both. The second decides how that refusal is
-    // worded, and that the field is not shown for the moment a restore takes.
+    // `pending` tells a refusal apart from the greeting, which arrive as the same frame; `restoring` decides
+    // how the refusal is worded.
     pending: '',
     restoring: known.length === DIGITS,
 
@@ -87,10 +64,6 @@ const store = createStore({
     catalog: [],
     catalogStale: false,
 
-    // Which release lookup is in flight: one app's id, 'all', or nothing.
-    // Asking what an app has released costs a request to GitHub each — see
-    // install/updates.js — so it happens on a press rather than on the way to
-    // drawing the list, and the press has to look like it did something.
     checking: null,
 
     tab: 'catalog',
@@ -103,10 +76,6 @@ const store = createStore({
     reading: false,
     uploading: null,
 
-    // What the package about to be installed — or just installed — says it
-    // is: name, version, id and icon. It arrives from the service for every
-    // source it can open, and from core/package.js for an upload, which is
-    // the one the phone is holding. Null until something has been read.
     identity: null,
 
     relayEnabled: false,
@@ -121,60 +90,32 @@ const store = createStore({
     themeOn: false
 });
 
-// ── The scene ─────────────────────────────────────────────────────────
-
-// The same ocean the television is showing, so the two ends of the pairing
-// visibly belong to the same thing. A finger dragged across the page pops
-// bubbles, which is what the Wii pointer did and is the only part of this
-// interface that exists purely because it is nice. The handle it returns is
-// for a page driven by a remote; here the finger does the popping.
 sea();
 
-// Off by default here, unlike the television. This page is very likely being
-// held in the same room as a TV already playing the theme, and a second copy
-// of it a few hundred milliseconds out of phase is the worst possible
-// outcome. It stays off until asked, and then it is remembered.
 const channel = theme({
     defaultOn: false,
     onState: ({ playing }) => store.update({ themeOn: playing })
 });
 
-// ── The connection ────────────────────────────────────────────────────
-
 const { send } = connect({
-    // A connection that is not up cannot be pairing. Without the second half
-    // of this, a phone that cannot reach its TV sits on "offering the code"
-    // with no field to type a different one into.
+    // A connection that is not up cannot be pairing, or a phone that cannot reach its TV sits on "offering the
+    // code" with no field to type into.
     onStatus: (connection) => store.update(
         connection === 'connected' ? { connection } : { connection, pending: '', restoring: false }
     ),
 
     onMessage: (type, payload) => {
-        // One place where every inbound message is turned into new state. A
-        // handler that returns nothing leaves the state alone.
         const reactions = {
             hello: () => {
                 const { pin, pending, restoring } = store.get();
 
                 if (payload.ok) {
-                    // Kept only once it has actually worked, so the code this
-                    // phone offers next time is never one that never did.
                     remember(pin);
                     return { paired: true, pending: '', restoring: false, pinError: null };
                 }
 
-                // The service greets every connection with the same needsPin
-                // frame it refuses with, so the two are told apart by whether
-                // this phone is waiting on an answer. Nothing is pending, so
-                // this is the greeting — and the greeting is the moment to
-                // offer the code this phone already has rather than ask for
-                // it again. Offering it any earlier, on the socket opening,
-                // would make the greeting itself look like the refusal.
-                //
-                // A reconnection lands here too: the service knows nothing
-                // about a client that dropped, so pairing has to be redone,
-                // and until this it was not — the page stayed looking paired
-                // while everything it tried came back unauthorized.
+                // Nothing pending means this is the greeting rather than a refusal, and the greeting is the
+                // moment to offer a code this phone already has. A reconnection lands here too.
                 if (!pending) {
                     if (pin.length !== DIGITS) return null;
 
@@ -182,12 +123,8 @@ const { send } = connect({
                     return { pending: pin, restoring: pin === remembered() };
                 }
 
-                // A refusal, then. Wrong, or merely old — the service mints a
-                // new code every start, so a remembered one stops matching the
-                // moment the TV restarts. Either way it is dropped rather than
-                // retried: the socket reconnects every second and a half, and
-                // retrying would spend all five attempts before anybody had
-                // finished looking up at the screen.
+                // Wrong, or merely old. Dropped rather than retried: the socket reconnects every second and a
+                // half and would spend all five attempts.
                 forget();
 
                 return {
@@ -203,8 +140,6 @@ const { send } = connect({
 
             state: () => ({ device: payload }),
 
-            // Every catalogue answers a check as well as a fetch, so this is
-            // also where a check finishes.
             catalog: () => ({ catalog: payload.entries || [], catalogStale: !!payload.stale, checking: null }),
 
             dir: () => ({ usb: payload }),
@@ -221,10 +156,8 @@ const { send } = connect({
             progress: () => ({
                 phase: payload.phase,
                 phaseDetail: payload.detail,
-                // Sent once, with the re-signing phase — the first moment
-                // the service knows what it is holding, which is as soon as
-                // the download finishes. Every other progress message leaves
-                // what was found in place.
+                // Sent once, with the re-signing phase; every other progress message leaves what was found in
+                // place.
                 identity: payload.identity || store.get().identity,
                 error: null,
                 done: null
@@ -233,13 +166,8 @@ const { send } = connect({
             done: () => ({ phase: null, phaseDetail: null, done: payload, error: null }),
 
             error: () => {
-                // Before pairing, the PIN field is the only thing on screen —
-                // the outcome panel that shows failures is not rendered yet.
-                // So a refusal that arrives now is said there or nowhere, and
-                // one does arrive here: a lockout, which the service reports
-                // as an error rather than a refused hello. The PIN is left
-                // alone, because being locked out says nothing about whether
-                // it was the right one.
+                // Before pairing the PIN field is all there is, so a lockout — reported as an error rather
+                // than a refused hello — is said there or nowhere.
                 if (!store.get().paired) {
                     return {
                         pending: '',
@@ -252,9 +180,6 @@ const { send } = connect({
                     phase: null,
                     relayBusy: false,
                     uploading: null,
-                    // A refused check must not leave every button on the app
-                    // list disabled for good. Whatever this was, nothing is in
-                    // flight after it.
                     checking: null,
                     error: {
                         title: EXPLANATIONS[payload.code] || 'Failed.',
@@ -270,7 +195,6 @@ const { send } = connect({
 
         if (changes) store.update(changes);
 
-        // Pairing succeeding is the cue to load everything that needs a PIN.
         if (type === 'hello' && payload.ok) {
             send(Send.catalog, {});
             send(Send.state, {});
@@ -278,30 +202,19 @@ const { send } = connect({
     }
 });
 
-// ── What a tap does ───────────────────────────────────────────────────
-
 const value = (id) => {
     const element = document.getElementById(id);
     return element ? element.value.trim() : '';
 };
 
 const beginInstall = (source, reference) => {
-    // The identity goes with it: whatever is on screen belongs to the last
-    // install, and leaving it there would put one app's icon above another
-    // app's progress bar for the four seconds before the service answers.
+    // The identity goes with it, or one app's icon sits above another app's progress bar.
     store.update({ error: null, done: null, phase: 'probing', identity: null });
     send(Send.install, { source, ref: reference });
 };
 
-/**
- * Takes a file the person picked, and opens it.
- *
- * Reading the archive is what turns `download (2).wgt` back into the
- * application inside it, and it happens now rather than after the upload
- * because the whole value of it is being able to see what this is *before*
- * spending a minute of wifi on it. It is allowed to come back with nothing —
- * see core/package.js — in which case the filename stands as it always did.
- */
+// Read now rather than after the upload, because the value of it is seeing what this is before spending a
+// minute of wifi on it.
 const chooseFile = async (file) => {
     store.update({ file, identity: null, reading: Boolean(file), error: null, done: null });
 
@@ -309,23 +222,18 @@ const chooseFile = async (file) => {
 
     const app = await readPackage(file);
 
-    // Somebody may have chosen a different file while this one was being
-    // read. Whichever is in the well now is the one the card describes.
+    // Somebody may have chosen a different file while this one was being read.
     if (store.get().file !== file) return;
 
     store.update({ identity: app, reading: false });
 };
 
 delegate({
-    // The PIN submits itself on the sixth digit: asking someone to press a
-    // button after typing exactly six digits is a step that earns nothing.
     pin: (element) => {
         const digits = element.value.replace(/\D/g, '').slice(0, DIGITS);
         element.value = digits;
         const complete = digits.length === DIGITS;
 
-        // Typed, so `restoring` is false and a refusal reads as a mistyped
-        // code rather than as a television that has restarted.
         store.update({ pin: digits, pinError: null, restoring: false, pending: complete ? digits : '' });
 
         if (complete) send(Send.hello, { pin: digits });
@@ -333,8 +241,6 @@ delegate({
 
     'catalog:refresh': () => send(Send.catalog, { refresh: true }),
 
-    // The whole list, and one row of it. Both answer with a catalogue, which
-    // is what clears `checking` above.
     checkAll: () => {
         if (store.get().checking) return;
         store.update({ checking: 'all' });
@@ -414,7 +320,6 @@ delegate({
     theme: () => channel.toggle()
 });
 
-// Dropping a file anywhere is more forgiving than aiming at a target.
 ['dragover', 'drop'].forEach((name) => document.addEventListener(name, (event) => {
     event.preventDefault();
     if (name === 'drop' && event.dataTransfer.files.length) {
@@ -423,12 +328,8 @@ delegate({
     }
 }));
 
-// ── What is on screen ─────────────────────────────────────────────────
-
 mount(store, {
     masthead,
-    // Before pairing the only thing offered is the PIN; everything else would
-    // just be something that cannot work yet.
     status: (state) => (state.paired ? status(state) : pairing(state)),
     tabs: (state) => (state.paired ? tabs(state) : { __markup: '' }),
     panel: (state) => (state.paired ? panel(state) : { __markup: '' }),
