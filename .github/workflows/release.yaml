@@ -69,7 +69,7 @@ jobs:
         run: |
           version="$(node -p "require('./tizen.config.json').version")"
           name="tizen-homebrew-${version}.wgt"
-          mv release/tizenhomebrew.wgt "release/${name}"
+          mv release/homebrew.wgt "release/${name}"
           echo "path=release/${name}" >> "$GITHUB_OUTPUT"
 
       - name: Open a draft release with it

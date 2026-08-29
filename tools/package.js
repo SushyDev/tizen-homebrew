@@ -18,7 +18,7 @@ const DEVELOPER_MARK = 'DEVELOPER BUILD — pin fixed at';
 // tizenjs's --ignore matches basenames only, so it cannot express "keep service/dist/index.js but
 // drop service/index.js". Staging an allowlist instead makes the package contents exact.
 const APP = {
-    output: 'release/tizenhomebrew.wgt',
+    output: 'release/homebrew.wgt',
     include: [
         'config.xml',
         'icon.png',
@@ -185,7 +185,7 @@ async function main() {
         ui.note(ui.style.dim('the TV it runs on. A set refuses it over sdb — package without --unsigned.'));
     } else {
         ui.note('Packaged.');
-        ui.note(ui.style.dim('Install with `npm run bootstrap -- <tv-ip>`, or sdb install release/tizenhomebrew.wgt'));
+        ui.note(ui.style.dim('Install with `npm run bootstrap -- <tv-ip>`, or sdb install release/homebrew.wgt'));
     }
     ui.blank();
 }

@@ -64,7 +64,7 @@ const run = async () => {
         });
 
         const outcome = await install(
-            { source: 'upload', reference: 'tizenhomebrew.wgt', upload: fixture.wgtWithIcon() },
+            { source: 'upload', reference: 'homebrew.wgt', upload: fixture.wgtWithIcon() },
             (phase, _detail, extra) => {
                 phases.push(phase);
                 if (extra && extra.identity) announced.push([phase, extra.identity]);
