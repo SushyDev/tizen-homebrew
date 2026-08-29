@@ -379,20 +379,31 @@ const start = () => {
         json(response, { ok: true });
     });
 
-    // Exits so the platform starts the service again on the newly installed code.
-    router.on.post('/restart', (request, response) => {
+    // Exiting is all the service can do about its own lifetime: nothing respawns it, and the UI page
+    // holds no privilege to stop a sibling application.
+    const exitAfterResponse = (payload, asked, why) => (request, response) => {
         const verdict = authorise(request.headers['x-homebrew-pin']);
-        if (!verdict.ok) return failure(response, 403, verdict.code, verdict.message);
 
-        json(response, { ok: true, restarting: true, build: BUILD });
+        if (!verdict.ok) {
+            return failure(response, verdict.code === ErrorCode.LOCKED_OUT ? 429 : 403, verdict.code, verdict.message);
+        }
 
-        svc.warn(`${host(request.socket && request.socket.remoteAddress)} asked for a restart`);
+        json(response, { ok: true, build: BUILD, ...payload });
 
+        svc.warn(`${host(request.socket && request.socket.remoteAddress)} asked the service to ${asked}`);
+
+        // The response has to clear the socket first, because the caller waits on it.
         setTimeout(() => {
-            svc.info(`exiting after ${took(recorded.uptime())} so the platform reloads the service on new code`);
+            svc.info(`exiting after ${took(recorded.uptime())} ${why}`);
             process.exit(0);
         }, 300);
-    });
+    };
+
+    router.on.post('/restart', exitAfterResponse(
+        { restarting: true }, 'restart', 'so the platform reloads it on new code'));
+
+    router.on.post('/shutdown', exitAfterResponse(
+        { stopping: true }, 'stop', 'because the television app is closing'));
 
     const uiRoot = [
         join(__dirname, '..', '..', 'ui', 'dist'),

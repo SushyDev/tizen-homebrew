@@ -10,7 +10,7 @@ import { devService } from './dev/service.js';
 const TV = process.env.HOMEBREW_TV || '';
 const SERVICE = TV ? `http://${TV}:8091` : '';
 
-const API = ['/pin', '/state', '/version', '/health', '/logs', '/packages', '/install', '/restart'];
+const API = ['/pin', '/state', '/version', '/health', '/logs', '/packages', '/install', '/restart', '/shutdown'];
 
 const PAGE = process.env.HOMEBREW_PAGE || 'index';
 

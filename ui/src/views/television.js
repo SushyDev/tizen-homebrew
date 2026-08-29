@@ -188,6 +188,7 @@ const deck = (state) => {
     return html`
       <div class="stack stack-snug">
         <div class="deck">
+          ${button('restart', state.restarting ? 'restarting…' : 'restart service')}
           ${button('logs', 'show logs')}
           ${button('theme', state.themeOn ? 'theme · on' : 'theme · off')}
           ${button('pop', 'pop bubbles')}

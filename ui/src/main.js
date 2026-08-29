@@ -127,6 +127,11 @@ const { send } = connect({
                 // half and would spend all five attempts.
                 forget();
 
+                // Emptied here as well as in the store: a second identical refusal renders identical markup,
+                // so the repaint that would otherwise clear the field never runs.
+                const field = document.getElementById('pin');
+                if (field) field.value = '';
+
                 return {
                     paired: false,
                     pending: '',
@@ -234,7 +239,9 @@ delegate({
         element.value = digits;
         const complete = digits.length === DIGITS;
 
-        store.update({ pin: digits, pinError: null, restoring: false, pending: complete ? digits : '' });
+        // A refusal is left on screen until the next one answers it: clearing it here would change the
+        // markup around this field, and the repaint takes the field, the keystroke and the focus with it.
+        store.update({ pin: digits, restoring: false, pending: complete ? digits : '' });
 
         if (complete) send(Send.hello, { pin: digits });
     },

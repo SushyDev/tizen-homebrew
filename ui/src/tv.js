@@ -27,7 +27,8 @@ const store = createStore({
     view: 'main',
     from: 0,
     rows: null,
-    themeOn: false
+    themeOn: false,
+    restarting: false
 });
 
 const started = Date.now();
@@ -98,9 +99,64 @@ const ask = (path) => new Promise((resolve, reject) => {
     request.send();
 });
 
+// Every write route is behind the PIN, which this page reads from /pin over loopback at startup.
+const post = (path) => new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', BASE + path, true);
+    request.timeout = 4000;
+
+    const { pin } = store.get();
+    if (pin) request.setRequestHeader('x-homebrew-pin', pin);
+
+    request.onload = () => (request.status < 400
+        ? resolve(request.responseText)
+        : reject(new Error(`HTTP ${request.status}`)));
+
+    request.onerror = () => reject(new Error('unreachable'));
+    request.ontimeout = () => reject(new Error('timeout'));
+    request.send();
+});
+
+const SERVICE_ID = application ? `${application.appInfo.packageId}.TizenHomebrewService` : null;
+
+const launchService = () => new Promise((resolve, reject) => {
+    tizen.application.launchAppControl(
+        new tizen.ApplicationControl('http://tizen.org/appcontrol/operation/service'),
+        SERVICE_ID,
+        resolve,
+        reject
+    );
+});
+
+// Waited on, but never past this: a wedged service must not trap anyone in the app.
+const LEAVE_DEADLINE = 1500;
+
+let leaving = false;
+
+// The service is a separate application that outlives this page, so leaving means asking it to stop
+// as well. The audio is torn down here rather than left to the page going away, because a runtime
+// that keeps the page alive keeps the theme playing over the Tizen home screen.
 const leave = () => {
-    if (application) return application.exit();
-    say('exit: not running on a television', 'warn');
+    if (leaving) return;
+
+    if (!application) {
+        say('exit: not running on a television', 'warn');
+        return;
+    }
+
+    leaving = true;
+    channel.stop();
+
+    let gone = false;
+
+    const go = () => {
+        if (gone) return;
+        gone = true;
+        application.exit();
+    };
+
+    window.setTimeout(go, LEAVE_DEADLINE);
+    post('/shutdown').then(go, go);
 };
 
 const open = (view) => store.update((state) => {
@@ -139,6 +195,7 @@ const actions = {
     credits: () => open('credits'),
     close: () => close(),
     pop: () => water.popAll(),
+    restart: () => restart(),
     exit: () => leave()
 };
 
@@ -302,6 +359,8 @@ const watchReadiness = async () => {
     }
 };
 
+let readinessTimer = null;
+
 const waitForService = async () => {
     store.update((state) => ({ attempts: state.attempts + 1 }));
 
@@ -318,7 +377,9 @@ const waitForService = async () => {
         ask('/version').then(({ build }) => store.update({ build }), () => {});
 
         watchReadiness();
-        setInterval(watchReadiness, 5000);
+
+        // A restart runs this a second time, and a second interval would double every poll from then on.
+        if (readinessTimer === null) readinessTimer = setInterval(watchReadiness, 5000);
     } catch (failure) {
         const { attempts } = store.get();
 
@@ -335,6 +396,69 @@ const waitForService = async () => {
     }
 };
 
+const GONE_DEADLINE = 8000;
+
+const pause = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+// The service answers the restart before it exits, so a launch sent straight away is swallowed by the
+// process that is about to die and nothing comes back.
+const waitForExit = async () => {
+    const until = Date.now() + GONE_DEADLINE;
+
+    while (Date.now() < until) {
+        try {
+            await ask('/version');
+        } catch (e) {
+            return true;
+        }
+
+        await pause(200);
+    }
+
+    return false;
+};
+
+let restarting = false;
+
+const restart = async () => {
+    if (restarting) return;
+
+    if (!application) {
+        say('restart: not running on a television', 'warn');
+        return;
+    }
+
+    restarting = true;
+    store.update({ restarting: true });
+
+    say('asking the service to restart', 'warn');
+
+    // A cut-short response is the service exiting, which is what was asked for.
+    await post('/restart').catch(() => {});
+
+    const stopped = await waitForExit();
+    if (!stopped) say('the service is still answering — launching it anyway', 'warn');
+
+    // Its log and its PIN both start again, so nothing already on screen describes what comes back.
+    sinceSeq = 0;
+    lastUptime = 0;
+    clockOffset = null;
+    logAnswered = false;
+    logMisses = 0;
+
+    store.update({ pin: null, ready: null, attempts: 0 });
+
+    await launchService().then(
+        () => say('the platform accepted the service launch', 'ok'),
+        (error) => say(`could not launch the service: ${error.message}`, 'err')
+    );
+
+    restarting = false;
+    store.update({ restarting: false });
+
+    waitForService();
+};
+
 watchLog();
 setInterval(watchLog, LOG_INTERVAL);
 
@@ -344,17 +468,9 @@ if (!application) {
     say('running off-TV — whatever answers this origin is standing in', 'warn');
     waitForService();
 } else {
-    tizen.application.launchAppControl(
-        new tizen.ApplicationControl('http://tizen.org/appcontrol/operation/service'),
-        `${application.appInfo.packageId}.TizenHomebrewService`,
-        () => {
-            say('the platform accepted the service launch', 'ok');
-            waitForService();
-        },
-        (error) => {
-            say(`could not launch the service: ${error.message}`, 'err');
-            // It may already be running from an earlier launch, so still poll.
-            waitForService();
-        }
-    );
+    launchService().then(
+        () => say('the platform accepted the service launch', 'ok'),
+        // It may already be running from an earlier launch, so a refusal still polls.
+        (error) => say(`could not launch the service: ${error.message}`, 'err')
+    ).then(waitForService);
 }
