@@ -10,7 +10,7 @@ const JSZip = require('jszip');
 
 const ui = require('./ui.js');
 const { load, ROOT } = require('./config.js');
-const { which } = require('./which.js');
+const { which, runSync } = require('./which.js');
 const certificates = require('./certificates.js');
 
 const DEVELOPER_MARK = 'DEVELOPER BUILD — pin fixed at';
@@ -95,7 +95,7 @@ function stageContents(staging) {
 
 function signWith(certificate, staging, outPath) {
     try {
-        execFileSync(certificate.tizenjs, [
+        runSync(certificate.tizenjs, [
             'build', '.',
             '-t', 'wgt',
             '-o', outPath,
@@ -165,7 +165,7 @@ async function main() {
 
     ui.heading('package', `v${config.version}${sign ? '' : ' unsigned'}`);
     ui.note(ui.style.dim('  building first...'));
-    execFileSync('node', [join(__dirname, 'build.js')], { cwd: ROOT, stdio: 'inherit' });
+    execFileSync(process.execPath, [join(__dirname, 'build.js')], { cwd: ROOT, stdio: 'inherit' });
 
     if (release && readFileSync(join(ROOT, 'service/dist/index.js'), 'utf8').indexOf(DEVELOPER_MARK) !== -1) {
         throw Object.assign(new Error(

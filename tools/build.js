@@ -1,11 +1,11 @@
 'use strict';
 
-const { execFileSync } = require('child_process');
 const { existsSync, statSync } = require('fs');
 const { join } = require('path');
 
 const ui = require('./ui.js');
 const { load, ROOT } = require('./config.js');
+const { npm } = require('./which.js');
 
 const STEPS = [
     {
@@ -38,7 +38,7 @@ function cleanOutput(raw) {
 function runStep(step) {
     const started = Date.now();
     try {
-        execFileSync('npm', ['run', 'build', '--workspace', step.workspace], {
+        npm(['run', 'build', '--workspace', step.workspace], {
             cwd: ROOT,
             stdio: 'pipe',
             encoding: 'utf8'

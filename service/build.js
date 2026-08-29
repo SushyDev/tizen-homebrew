@@ -91,7 +91,7 @@ const main = async () => {
         ), { isFriendly: true });
     }
 
-    execFileSync('node', [join(root, 'check-syntax.js'), join(outDir, 'index.js')], { stdio: 'inherit' });
+    execFileSync(process.execPath, [join(root, 'check-syntax.js'), join(outDir, 'index.js')], { stdio: 'inherit' });
 
     const previous = join(root, '..', '.last-build-size');
     if (existsSync(previous)) {

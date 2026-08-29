@@ -1,9 +1,8 @@
 'use strict';
 
-const { execFileSync } = require('child_process');
-
 const ui = require('./ui.js');
 const { ROOT } = require('./config.js');
+const { need, runSync, npm } = require('./which.js');
 
 // Lint first: `node --check` only validates syntax, so an undeclared variable reaches runtime and
 // fails on whichever machine hits that line first.
@@ -18,7 +17,7 @@ let failures = 0;
 {
     const started = Date.now();
     try {
-        execFileSync('npx', ['eslint', '.'], { cwd: ROOT, stdio: 'pipe', encoding: 'utf8' });
+        runSync(need('eslint'), ['.'], { cwd: ROOT, stdio: 'pipe', encoding: 'utf8' });
         ui.ok('lint', 'no errors', Date.now() - started);
 
     } catch (e) {
@@ -37,7 +36,7 @@ SUITES.forEach((suite) => {
     let failed = false;
 
     try {
-        output = execFileSync('npm', ['test', '--workspace', suite.workspace], {
+        output = npm(['test', '--workspace', suite.workspace], {
             cwd: ROOT,
             stdio: 'pipe',
             encoding: 'utf8'

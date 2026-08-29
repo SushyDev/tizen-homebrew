@@ -18,7 +18,7 @@ const friendly = (message) => Object.assign(new Error(message), { isFriendly: tr
 
 const run = (script, argv) => {
     try {
-        execFileSync('node', [join(__dirname, script)].concat(argv), { cwd: ROOT, stdio: 'inherit' });
+        execFileSync(process.execPath, [join(__dirname, script)].concat(argv), { cwd: ROOT, stdio: 'inherit' });
     } catch (error) {
         process.exit(typeof error.status === 'number' ? error.status : 1);
     }
