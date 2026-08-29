@@ -26,6 +26,22 @@ function get(path) {
     });
 }
 
+function post(path, pin) {
+    return new Promise((resolve, reject) => {
+        const request = http.request({
+            host: '127.0.0.1', port: PORT, path, method: 'POST',
+            headers: pin ? { 'x-homebrew-pin': pin } : {}
+        }, (res) => {
+            let body = '';
+            res.on('data', (c) => { body += c; });
+            res.on('end', () => resolve({ status: res.statusCode, body }));
+        });
+
+        request.on('error', reject);
+        request.end();
+    });
+}
+
 function open() {
     return new Promise((resolve, reject) => {
         const socket = new WebSocket(`ws://127.0.0.1:${PORT}`);
@@ -67,6 +83,12 @@ setTimeout(() => {
         .then((res) => {
             pin = JSON.parse(res.body).pin;
             check('GET /pin serves the PIN over loopback', res.status === 200 && /^\d{6}$/.test(pin), res.body);
+
+            // Deliberately wrong: the right one would end this test run along with the service.
+            return post('/shutdown', pin === '000000' ? '111111' : '000000');
+        })
+        .then((res) => {
+            check('POST /shutdown checks the PIN before it exits', res.status === 403, `status ${res.status}`);
             return open();
         })
         .then((c) => {
