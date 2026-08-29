@@ -64,9 +64,6 @@ https://user-images.githubusercontent.com/23558090/115278602-ee6f0280-a145-11eb-
 
 https://raw.githubusercontent.com/SushyDev/tizen-homebrew/refs/heads/update-docs/media/tv.mp4
 </td>
-
-<td width="75%" valign="top"><a href="media/tv.mp4"><img src="media/tv-screen.webp" alt="Watch the television screen"></a></td>
-<td width="25%" valign="top"><a href="media/phone.mp4"><img src="media/phone-apps.webp" alt="Watch the phone"></a></td>
 </tr>
 <tr>
 <td align="center"><sub><b><a href="media/tv.mp4">▶ The television</a></b> — 37s · pairing, an install as it lands, the log console, the credits</sub></td>
