@@ -150,7 +150,7 @@ setTimeout(() => {
             // The regression the reference implementation had: a missing break
             // meant a file install also wiped the stored certificates.
             const config = require('../src/config.js');
-            config.update({ authorCert: 'a', distributorCert: 'b', password: 'c' });
+            config.update({ author: 'a', distributor: 'b' });
             send(conn, 'install', { source: 'file', ref: '/nope.wgt' });
             return next(conn, 'error').then(() => config.hasCertificates());
         })

@@ -60,5 +60,9 @@
         <tizen:description>Serves the Tizen Homebrew UI and installs packages over loopback SDB.</tizen:description>
     </tizen:service>
 
-    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="enable" encryption="disable" install-location="auto" hwkey-event="enable"/>
+    <!-- background-support is "disable" so Back actually ends the page. Enabled,
+         the runtime keeps it alive in the background and the theme audio plays on
+         over the Tizen home screen. The service above is a separate application
+         and keeps running either way. -->
+    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
 </widget>

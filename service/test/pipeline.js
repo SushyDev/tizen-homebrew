@@ -44,8 +44,8 @@ const fakeConfig = (initial = {}) => {
     return {
         read: () => stored,
         update: (patch) => { stored = { ...stored, ...patch }; return stored; },
-        hasCertificates: () => !!stored.authorCert,
-        forgetCertificates: () => { stored = { ...stored, authorCert: null }; return stored; }
+        hasCertificates: () => !!stored.author,
+        forgetCertificates: () => { stored = { ...stored, author: null }; return stored; }
     };
 };
 
@@ -87,7 +87,7 @@ const run = async () => {
         // reaches the installer, whatever the firmware and whatever it came
         // signed with.
         const { install } = createInstaller({
-            sdb: fakeSdb(), device: fakeDevice(), config: fakeConfig({ authorCert: 'present' }),
+            sdb: fakeSdb(), device: fakeDevice(), config: fakeConfig({ author: 'present' }),
             resigner: fakeResigner, store
         });
 
@@ -187,7 +187,7 @@ const run = async () => {
     // --- a rejected certificate is discarded ------------------------------
     {
         const store = createStore({ installing: false, catalog: [] });
-        const config = fakeConfig({ authorCert: 'present' });
+        const config = fakeConfig({ author: 'present' });
         const { install } = createInstaller({
             sdb: fakeSdb('Check certificate error : :Check config.xml'),
             device: fakeDevice(), config, resigner: fakeResigner, store
@@ -210,7 +210,7 @@ const run = async () => {
             // needsResign false: an older television, which does not check the
             // distributor certificate and is re-signed for anyway.
             device: fakeDevice({ needsResign: false, duid: 'TESTSET' }),
-            config: fakeConfig({ authorCert: 'present' }),
+            config: fakeConfig({ author: 'present' }),
             resigner: () => Promise.resolve(async (archive) => {
                 signed.push(archive.length);
                 return { archive, device: 'TESTSET', files: 3 };

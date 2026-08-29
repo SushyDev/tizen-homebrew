@@ -28,14 +28,16 @@
     "mint": "node tools/mint.js",
     "certs": "node tools/certs.js",
     "push": "node tools/push.js",
+    "repl": "node tools/repl.js",
     "dev": "npm run dev --workspace ui",
-    "dev:service": "node service/src/main.js",
+    "dev:service": "node --require ./tools/dev-global.js service/src/main.js",
     "clean": "node tools/clean.js",
     "version": "node tools/version.js",
     "version:check": "node tools/version.js --check",
     "version:set": "node tools/version.js --set"
   },
   "devDependencies": {
+    "acorn": "^8.14.0",
     "eslint": "^10.9.1",
     "jszip": "^3.10.1",
     "tizen": "https://github.com/reisxd/tizen.js/tarball/main",

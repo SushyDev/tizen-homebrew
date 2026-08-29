@@ -16,6 +16,12 @@ const DIGITS = 6;
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
 
+// What a developer build pairs with instead of a fresh PIN. Not a secret and
+// not meant to be one: it exists so a build pushed at a television every few
+// minutes does not have to be read off its screen each time. main.js says so
+// out loud in the log, and a release build refuses to carry it.
+const DEVELOPER_PIN = '0'.repeat(DIGITS);
+
 /**
  * A fresh PIN, from the system CSPRNG.
  *
@@ -79,5 +85,5 @@ const recordSuccess = () => fresh();
 
 module.exports = {
     generate, matches, fresh, remaining, isLocked, recordFailure, recordSuccess,
-    DIGITS, MAX_ATTEMPTS, LOCKOUT_MS
+    DIGITS, MAX_ATTEMPTS, LOCKOUT_MS, DEVELOPER_PIN
 };

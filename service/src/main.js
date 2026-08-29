@@ -20,6 +20,8 @@ const { homedir } = require('os');
 const { startRecording, Facility } = require('./obs/log.js');
 const { size, took, host } = require('./obs/units.js');
 const runtime = require('./obs/runtime.js');
+const platform = require('./obs/platform.js');
+const memory = require('./obs/memory.js');
 
 // Installed before anything else can produce output worth keeping.
 const recorded = startRecording();
@@ -53,9 +55,14 @@ const PORT = Number(process.env.HOMEBREW_PORT) || 8091;
 const BUILD = '__HOMEBREW_BUILD__';
 const ORIGIN = '__HOMEBREW_ORIGIN__';
 
+// A developer build: fixed PIN and a REPL on /dev. Replaced by the bundler rather
+// than substituted afterwards, so an ordinary build has the branch deleted rather
+// than switched off. Unbundled, tools/dev-global.js sets it.
+const DEVELOPER = globalThis.__HOMEBREW_DEV__ === true;
+
 const start = () => {
     const startedAt = new Date().toISOString();
-    const secret = pin.generate();
+    const secret = DEVELOPER ? pin.DEVELOPER_PIN : pin.generate();
 
     const svc = log.on(Facility.SVC);
     const net = log.on(Facility.NET);
@@ -70,7 +77,30 @@ const start = () => {
     // can still fail there. When a set misbehaves, this line is the first
     // thing worth knowing and the last thing anybody thinks to ask for.
     svc.info(`${runtime.summary()}, pid ${process.pid}`);
-    log.on(Facility.AUTH).info(`pairing pin ${secret} — regenerated every start`);
+
+    // Fired, not awaited: a log line must never be between the process and its port.
+    platform.describe().then(
+        (facts) => platform.summary(facts).forEach((line) => dev.info(line)),
+        (error) => dev.warn(`could not read the platform: ${error.message}`)
+    );
+
+    if (DEVELOPER) {
+        log.on(Facility.AUTH).warn(`DEVELOPER BUILD — pin fixed at ${secret}, and POST /dev/eval will run ` +
+            'anything this network sends it. Do not leave this on a television you care about.');
+    } else {
+        log.on(Facility.AUTH).info(`pairing pin ${secret} — regenerated every start`);
+    }
+
+    // Before anything asks whether this television can sign: bootstrap may have
+    // left a pair beside the config for exactly this moment.
+    const adopted = config.adoptHandoff();
+
+    if (adopted) {
+        log.on(Facility.CFG).ok(`certificates adopted from bootstrap for ${adopted.join(', ') || 'an unnamed device'}`);
+    } else if (config.hasLegacyCertificates()) {
+        log.on(Facility.CFG).warn('the stored certificates are in the old .p12 format and cannot be used — ' +
+            'run `npm run certs` again');
+    }
 
     const store = createStore({
         installing: false,
@@ -365,6 +395,45 @@ const start = () => {
                 (list) => json(response, { ok: true, packages: list }),
                 (error) => failure(response, 500, error.code || ErrorCode.INTERNAL, error.message))));
 
+    if (DEVELOPER) {
+        const { createRepl } = require('./dev/repl.js');
+
+        const repl = createRepl({
+            require, process, log, store, config, secret,
+            catalog, updates, installer, relay, device, sdb, packages, platform, runtime, memory
+        });
+
+        const gate = (request, response) => {
+            const verdict = authorise(request.headers['x-homebrew-pin']);
+            if (verdict.ok) return true;
+            failure(response, verdict.code === ErrorCode.LOCKED_OUT ? 429 : 403, verdict.code, verdict.message);
+            return false;
+        };
+
+        svc.warn(`repl: POST /dev/eval, with ${repl.names.join(' ')} in scope`);
+
+        router.on.post('/dev/eval', async (request, response) => {
+            if (!gate(request, response)) return;
+
+            const source = (await readBody(request, 64 * 1024)).toString('utf8');
+
+            // Before it runs: if a line takes the service down, this is the record.
+            svc.warn(`eval from ${host(request.socket && request.socket.remoteAddress)}: ` +
+                source.replace(/\s+/g, ' ').slice(0, 200));
+
+            json(response, await repl.evaluate(source));
+        });
+
+        router.on.post('/dev/inspect', (request, response) => {
+            if (!gate(request, response)) return;
+
+            const opened = repl.openInspector(Number(request.headers['x-homebrew-port']) || 9229);
+
+            svc.warn(`inspector: ${opened.ok ? `open at ${opened.url}` : opened.error}`);
+            json(response, opened);
+        });
+    }
+
     // Installing a package sent straight here, so a build machine can update
     // the TV over the LAN. Pinning the developer IP to loopback removes sdb
     // from every other machine, which would otherwise leave no way in.
@@ -419,44 +488,32 @@ const start = () => {
             }
         })();
 
-        const missing = ['authorCert', 'distributorCert', 'password']
-            .filter((field) => typeof (pair || {})[field] !== 'string' || !pair[field]);
+        // Every device the pair names travels with it. The television cannot
+        // read them back out — that needs the ASN.1 parser this service dropped
+        // — so `npm run certs` reads them off the certificate and sends them.
+        const devices = ((pair || {}).devices || []).filter((name) => typeof name === 'string' && name);
 
-        if (missing.length) {
-            return failure(response, 400, ErrorCode.BAD_MESSAGE,
-                `A certificate pair needs ${missing.join(', ')}.`);
-        }
-
-        // Opened before it is stored, so a pair that cannot be used is refused
-        // now rather than at the end of somebody's next install — and so the
-        // device it names is read off the certificate itself rather than
-        // believed from whoever sent it.
-        const { devicesOf, openPair } = require('./install/resign.js');
-
+        // Checked before it is stored, so a pair that cannot be used is refused
+        // now rather than at the end of somebody's next install.
         const opened = (() => {
             try {
-                return openPair(pair);
+                return require('./install/resign.js').openPair(pair);
             } catch (error) {
                 return { error };
             }
         })();
 
         if (opened.error) {
-            return failure(response, 400, ErrorCode.RESIGN_FAILED, opened.error.message);
+            return failure(response, 400, ErrorCode.BAD_MESSAGE, opened.error.message);
         }
 
-        // Every device it names, not the first: one distributor certificate
-        // covers a `--duidList`, and judging it by entry zero refused installs
-        // on televisions the pair was perfectly good for.
-        const devices = devicesOf(opened.distributor);
         const device = devices[0] || null;
         const state = store.select('device');
         const here = state && state.duid;
 
         config.update({
-            authorCert: pair.authorCert,
-            distributorCert: pair.distributorCert,
-            password: pair.password,
+            author: pair.author,
+            distributor: pair.distributor,
             certDuid: device,
             certDuids: devices,
             certCreatedAt: new Date().toISOString()

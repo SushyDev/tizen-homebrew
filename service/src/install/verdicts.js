@@ -65,8 +65,16 @@ const SIGNATURES = [
         // so the next attempt re-mints instead of failing identically.
         code: ErrorCode.CERT_REJECTED,
         matches: /Check certificate error/i,
-        remedy: () => 'The stored certificates do not cover this television. They have been ' +
-            'cleared, so send a fresh pair — `npm run certs -- <ip> <pin>`.'
+        // Two readers, two causes. The service re-signed the package itself, so
+        // the pair it holds is the suspect and it clears it. bootstrap installed
+        // whatever is in release/, so the package's own signature is — and
+        // saying "they have been cleared" there names something nothing did.
+        remedy: (context) => (context.replaceWith
+            ? 'That package is signed for a different television, or not signed at all.\n' +
+              '`npm run package` signs one for this machine\'s TV; `npm run package -- --unsigned`\n' +
+              'does not, and a set refuses those over sdb.'
+            : 'The stored certificates do not cover this television. They have been ' +
+              'cleared, so send a fresh pair — `npm run certs -- <ip> <pin>`.')
     },
     {
         // install failed[118, -12] Invalid certificate chain with certificate

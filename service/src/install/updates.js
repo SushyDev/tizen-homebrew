@@ -136,7 +136,7 @@ const createUpdates = ({ packages, log, config, latestRelease = sources.latestRe
         // says the listing was asked for at all.
         say.info('asking the television what it is holding');
 
-        asking = packages.list().then(
+        asking = packages.list({ say }).then(
             (list) => {
                 asking = null;
 

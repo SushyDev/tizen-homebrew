@@ -12,6 +12,7 @@ import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { build } from 'vite';
 import { unsupportedCss, stylesOf } from '../tools/css-support.js';
+import { unsupportedJs, scriptsOf } from '../tools/js-support.js';
 
 const PAGES = ['index', 'tv'];
 
@@ -20,24 +21,38 @@ for (const page of PAGES) {
     await build();
 }
 
-const complaints = readdirSync('dist')
+const pages = readdirSync('dist')
     .filter((name) => name.endsWith('.html'))
-    .flatMap((name) => unsupportedCss(stylesOf(readFileSync(join('dist', name), 'utf8')))
-        .map((problem) => `  ${name}: ${problem}`));
+    .map((name) => ({ name, html: readFileSync(join('dist', name), 'utf8') }));
 
-if (complaints.length > 0) {
-    console.error([
-        '',
-        'This CSS would not render on the television.',
-        '',
-        ...complaints,
-        '',
-        'Tizen 6.5 is Chromium 76 and drops what it cannot parse without a word.',
-        'Either write it another way, or teach PostCSS to lower it in vite.config.js.',
-        ''
-    ].join('\n'));
+const cssComplaints = pages
+    .flatMap(({ name, html }) => unsupportedCss(stylesOf(html)).map((problem) => `  ${name}: ${problem}`));
 
+// esbuild leaves regexes alone whatever the target, and one Chromium 63 cannot
+// parse is a SyntaxError over the whole inlined script — a blank page, not a
+// degraded one. See tools/js-support.js.
+const jsComplaints = pages
+    .flatMap(({ name, html }) => scriptsOf(html)
+        .flatMap((script) => unsupportedJs(script, 'chromium').map((problem) => `  ${name}: ${problem}`)));
+
+const refuse = (heading, complaints, advice) => {
+    console.error(['', heading, '', ...complaints, '', ...advice, ''].join('\n'));
     process.exit(1);
+};
+
+if (cssComplaints.length > 0) {
+    refuse('This CSS would not render on the television.', cssComplaints, [
+        'Tizen 6.5 is Chromium 76 and drops what it cannot parse without a word.',
+        'Either write it another way, or teach PostCSS to lower it in vite.config.js.'
+    ]);
 }
 
-console.log(`\nchecked ${PAGES.length} pages against Chromium 63 — nothing the TV would drop\n`);
+if (jsComplaints.length > 0) {
+    refuse('This JavaScript would not parse on the television.', jsComplaints, [
+        'Tizen 5.5 is Chromium 63, and an unsupported regular expression is a',
+        'SyntaxError over the whole inlined script — the page renders as nothing.',
+        'Rewrite the expression; there is no build step that can lower it.'
+    ]);
+}
+
+console.log(`\nchecked ${PAGES.length} pages against Chromium 63 — no CSS it would drop, no regex it would refuse\n`);

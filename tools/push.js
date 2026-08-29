@@ -133,9 +133,16 @@ async function pushOne(ip, pin, buildBefore) {
             return { appId: appId(), version: after.build, selfRestarted: true };
         }
 
+        // Not necessarily a failed install. The connection drops because the
+        // service is being replaced, and whether the platform brings it back
+        // depends on the app still being foregrounded — so silence here means
+        // "cannot tell", and leading with "could not reach" reads as "did not
+        // install" when the package is usually already on the set.
         throw friendly(
-            `Could not reach Tizen Homebrew at ${ip}:${PORT} — ${err.message}\n\n` +
-            '  Open Tizen Homebrew on the TV; the service only runs while it is open.'
+            `Tizen Homebrew at ${ip}:${PORT} did not come back within a minute — ${err.message}\n\n` +
+            '  The install has probably finished; the service only runs while the app is\n' +
+            '  open, and a set that had moved on will not reopen it by itself.\n\n' +
+            '  Open Tizen Homebrew on the TV, then check:  npm run push -- ' + `${ip} <pin>`
         );
     }
 

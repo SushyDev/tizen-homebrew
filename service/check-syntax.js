@@ -22,9 +22,15 @@
 // This is checked rather than trusted because the bundler is asked to
 // downlevel: if that ever silently stops happening, the failure would
 // otherwise appear only on the TV.
+//
+// Regular expressions are checked too. There is nothing to lower `(?<=\n)` to,
+// so the bundler emits it as written and lwnode raises SyntaxError over the
+// whole file. See tools/js-support.js.
 
 const acorn = require('acorn');
 const { readFileSync } = require('fs');
+
+const { unsupportedJs } = require('../tools/js-support.js');
 
 const UNSUPPORTED = {
     ChainExpression: 'optional chaining (?.)',
@@ -86,22 +92,36 @@ function check(file) {
         }
     })(ast);
 
-    if (!findings.length) {
-        console.log(`${file}: clean — parses and resolves on Node 12 (Tizen 6.5).`);
+    // Reported apart from the findings above: Node 12 is measured on a set,
+    // Escargot is the engine a set might turn out to be running.
+    const expressions = unsupportedJs(source, 'escargot');
+
+    if (!findings.length && !expressions.length) {
+        console.log(`${file}: clean — parses and resolves on Node 12 (Tizen 6.5), and on Escargot.`);
         return 0;
     }
 
-    const byLabel = {};
-    findings.forEach((f) => {
-        if (!byLabel[f.label]) byLabel[f.label] = [];
-        byLabel[f.label].push(f.line);
-    });
+    if (findings.length) {
+        const byLabel = {};
+        findings.forEach((f) => {
+            if (!byLabel[f.label]) byLabel[f.label] = [];
+            byLabel[f.label].push(f.line);
+        });
 
-    console.error(`${file}: ${findings.length} construct(s) Node 12 cannot run:`);
-    for (const label in byLabel) {
-        const lines = byLabel[label];
-        console.error(`  ${label} x${lines.length}  (first at line ${lines[0]})`);
+        console.error(`${file}: ${findings.length} construct(s) Node 12 cannot run:`);
+        for (const label in byLabel) {
+            const lines = byLabel[label];
+            console.error(`  ${label} x${lines.length}  (first at line ${lines[0]})`);
+        }
     }
+
+    if (expressions.length) {
+        console.error(`${file}: ${expressions.length} regular expression(s) lwnode cannot parse:`);
+        expressions.forEach((problem) => console.error(`  ${problem}`));
+        console.error('  A television running lwnode raises SyntaxError over the whole bundle,');
+        console.error('  so the service dies before it can open its port or write a log line.');
+    }
+
     return 1;
 }
 

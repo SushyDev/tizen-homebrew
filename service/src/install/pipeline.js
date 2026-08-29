@@ -15,6 +15,7 @@ const manifest = require('./manifest.js');
 const preview = require('./preview.js');
 const installer = require('./installer.js');
 const { size, took, rate } = require('../obs/units.js');
+const memory = require('../obs/memory.js');
 
 const refuse = (code, message) => Object.assign(new Error(message), { code });
 
@@ -50,6 +51,12 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
 
         store.update({ installing: true });
 
+        const held = memory.peak();
+        const phase = (name, detail, extra) => {
+            held.at(name);
+            report(name, detail, extra);
+        };
+
         // Every line below is timed from here, so the log answers "which step
         // was slow" without anybody having to subtract timestamps.
         const startedAt = Date.now();
@@ -58,7 +65,7 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
         say.info(`install requested: ${request.source} ${request.reference || '(upload)'}`);
 
         const probeReadiness = async () => {
-            report('probing');
+            phase('probing');
 
             const state = await device.probe();
 
@@ -89,7 +96,7 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
         };
 
         const acquirePackage = async (carried) => {
-            report('fetching', request.reference || request.source);
+            phase('fetching', request.reference || request.source);
 
             const began = Date.now();
 
@@ -160,7 +167,7 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
             // Before the certificate check, deliberately: a set with no pair
             // stored refuses here, and a refusal that names the application it
             // refused is worth more than one naming the file it arrived in.
-            report('resigning', carried.identity.name || carried.identity.packageId,
+            phase('resigning', carried.identity.name || carried.identity.packageId,
                 { identity: carried.described });
 
             if (!config.hasCertificates(carried.state.duid)) {
@@ -178,7 +185,7 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
         };
 
         const stageOnDisk = (carried) => {
-            report('staging', carried.identity.name || carried.identity.packageId);
+            phase('staging', carried.identity.name || carried.identity.packageId);
 
             const stagedPath = installer.stage(carried.archive, carried.identity);
 
@@ -188,7 +195,7 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
         };
 
         const runInstaller = async (carried) => {
-            report('installing', carried.identity.name || carried.identity.packageId);
+            phase('installing', carried.identity.name || carried.identity.packageId);
 
             const command = `shell:0 vd_appinstall ${carried.identity.packageId} ${carried.stagedPath}`;
             const began = Date.now();
@@ -237,6 +244,8 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
             const installed = await runInstaller(staged);
             const outcome = recordOutcome(installed);
 
+            held.at('finishing');
+
             say.ok(`installed ${outcome.name || outcome.packageId} ${outcome.version || ''} in ${took(at())}`);
 
             return outcome;
@@ -259,6 +268,16 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
 
             throw error;
         } finally {
+            // Logged whether it worked or not: an install that ran out of
+            // memory and one the set refused read the same without it.
+            const high = held.highest();
+
+            if (high.at) {
+                // getrusage's peak covers the whole process life, not this install.
+                say.info(`peak memory ${memory.describe(high)}, at ${high.at}` +
+                    (high.peakRss ? `; process high-water ${size(high.peakRss)}` : ''));
+            }
+
             store.update({ installing: false });
         }
     };

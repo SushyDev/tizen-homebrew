@@ -80,6 +80,44 @@ const devicesIn = (path, password) => {
     }
 };
 
+/**
+ * A .p12, as DER bytes, in the shape the television stores: PEM and a PEM key.
+ *
+ * The conversion happens here so it does not happen there. It is the only thing
+ * the service used node-forge for, and forge was a third of the bundle.
+ *
+ * The two `toPem` calls and the order they run in are lifted verbatim from
+ * `tizen/src/packageSigner.js`, because the signature XML is built from their
+ * output — a different order, or a re-encoding, is a different signature.
+ */
+const asPem = (der, password) => {
+    const forge = require('node-forge');
+
+    const p12 = forge.pkcs12.pkcs12FromAsn1(
+        forge.asn1.fromDer(Buffer.from(der).toString('binary')),
+        false,
+        password
+    );
+
+    const certificates = [];
+    let key = null;
+
+    for (const contents of p12.safeContents) {
+        for (const bag of contents.safeBags) {
+            if (bag.type === forge.pki.oids.certBag && bag.cert) {
+                certificates.push(forge.pki.certificateToPem(bag.cert));
+            } else if (bag.type === forge.pki.oids.pkcs8ShroudedKeyBag && bag.key) {
+                key = forge.pki.privateKeyToPem(bag.key);
+            }
+        }
+    }
+
+    if (!certificates.length) throw new Error('That certificate file holds no certificate.');
+    if (!key) throw new Error('That certificate file holds no private key — wrong password?');
+
+    return { certificates, key };
+};
+
 /** What is missing, in the order somebody would fix it. */
 const missing = (certificates) => [
     !existsSync(certificates.author) ? `no author certificate at ${certificates.author}` : null,
@@ -93,4 +131,4 @@ const howToMint = () => 'Mint a pair bound to your television:\n\n' +
     '    npm run mint -- <tv-ip> <pin>       the same, once it is pinned to loopback\n' +
     '    npm run mint -- --duid <TV-DUID>    when you already know';
 
-module.exports = { locate, missing, devicesIn, howToMint, DEFAULT_DIR };
+module.exports = { locate, missing, devicesIn, asPem, howToMint, DEFAULT_DIR };

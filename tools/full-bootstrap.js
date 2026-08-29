@@ -175,15 +175,8 @@ const main = async () => {
 
     run('bootstrap.js', [ip].concat(keepingAuthor && !argv.has('--replace') ? [] : ['--replace']));
 
-    // bootstrap has just printed the two steps that happen on the television
-    // itself. This is the one after those, and it is the step that makes the
-    // set able to install anything other than what this machine signed.
-    ui.note('Then, once it is back up and Tizen Homebrew is open:');
-    ui.blank();
-    ui.note(ui.style.dim(`  npm run certs -- ${ip} <the-code-on-screen>`));
-    ui.blank();
-    ui.note('That hands the TV its own certificates, so it re-signs everything it');
-    ui.note('installs from then on — whoever built it.');
+    ui.note('The certificates went with it, so the TV already re-signs whatever it');
+    ui.note('installs — whoever built it. Nothing else to run.');
     ui.blank();
 };
 
