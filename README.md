@@ -56,20 +56,18 @@ other machine can reach its sdb daemon.
 
 <table>
 <tr>
-<td width="50%">
-<video src="media/tv.mp4" controls muted loop playsinline width="100%">
-<a href="media/tv.mp4">The television screen — 37s, 1080p</a>
-</video>
+<td width="75%" valign="top">
+<video src="https://github.com/SushyDev/tizen-homebrew/raw/refs/heads/update-docs/media/tv.mp4"
+       controls muted loop playsinline width="100%"></video>
 </td>
-<td width="50%">
-<video src="media/phone.mp4" controls muted loop playsinline width="100%">
-<a href="media/phone.mp4">The phone — 33s, 1080p</a>
-</video>
+<td width="25%" valign="top">
+<video src="https://github.com/SushyDev/tizen-homebrew/raw/refs/heads/update-docs/media/phone.mp4"
+       controls muted loop playsinline width="100%"></video>
 </td>
 </tr>
 <tr>
-<td align="center"><sub><b>The television</b> · <a href="media/tv.mp4">tv.mp4</a></sub></td>
-<td align="center"><sub><b>The phone</b> · <a href="media/phone.mp4">phone.mp4</a></sub></td>
+<td align="center"><sub>The television — pairing, an install as it lands, the log console, the credits</sub></td>
+<td align="center"><sub>The phone</sub></td>
 </tr>
 </table>
 
