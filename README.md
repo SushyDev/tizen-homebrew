@@ -52,6 +52,88 @@ other machine can reach its sdb daemon.
 
 ---
 
+## Screens
+
+<table>
+<tr>
+<td width="50%">
+<video src="media/tv.mp4" controls muted loop playsinline width="100%">
+<a href="media/tv.mp4">The television screen — 37s, 1080p</a>
+</video>
+</td>
+<td width="50%">
+<video src="media/phone.mp4" controls muted loop playsinline width="100%">
+<a href="media/phone.mp4">The phone — 33s, 1080p</a>
+</video>
+</td>
+</tr>
+<tr>
+<td align="center"><sub><b>The television</b> · <a href="media/tv.mp4">tv.mp4</a></sub></td>
+<td align="center"><sub><b>The phone</b> · <a href="media/phone.mp4">phone.mp4</a></sub></td>
+</tr>
+</table>
+
+### On the TV
+
+<table>
+<tr>
+<td><img src="media/tv-screen.webp" alt="The television screen: the address to open, the pairing code, and the log"></td>
+</tr>
+<tr>
+<td align="center"><sub>The address, the code, and whatever the service is doing</sub></td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="33%"><img src="media/tv-installing.webp" alt="The log narrating an install"></td>
+<td width="33%"><img src="media/tv-logs.webp" alt="The log console"></td>
+<td width="33%"><img src="media/tv-credits.webp" alt="The credits"></td>
+</tr>
+<tr>
+<td align="center"><sub>An install, as it happens</sub></td>
+<td align="center"><sub>The log console</sub></td>
+<td align="center"><sub>Credits</sub></td>
+</tr>
+</table>
+
+### On the phone
+
+<table>
+<tr>
+<td width="33%"><img src="media/phone-pairing.webp" alt="Pairing"></td>
+<td width="33%"><img src="media/phone-apps.webp" alt="The catalog"></td>
+<td width="33%"><img src="media/phone-updates.webp" alt="Updates found"></td>
+</tr>
+<tr>
+<td align="center"><sub><b>Pairing</b> — the six digits on the TV</sub></td>
+<td align="center"><sub><b>Apps</b> — the catalog, and what is already on the TV</sub></td>
+<td align="center"><sub><b>check all</b> — what has a newer release</sub></td>
+</tr>
+<tr>
+<td><img src="media/phone-upload.webp" alt="Upload"></td>
+<td><img src="media/phone-github.webp" alt="GitHub"></td>
+<td><img src="media/phone-usb.webp" alt="USB"></td>
+</tr>
+<tr>
+<td align="center"><sub><b>Upload</b> — a .wgt from the phone</sub></td>
+<td align="center"><sub><b>GitHub</b> — owner/repo, newest release</sub></td>
+<td align="center"><sub><b>USB</b> — a stick plugged into the TV</sub></td>
+</tr>
+<tr>
+<td><img src="media/phone-shell.webp" alt="Shell"></td>
+<td><img src="media/phone-installing.webp" alt="Installing"></td>
+<td><img src="media/phone-installed.webp" alt="Installed"></td>
+</tr>
+<tr>
+<td align="center"><sub><b>Shell</b> — sdb commands, off by default</sub></td>
+<td align="center"><sub>Five steps, re-signing among them</sub></td>
+<td align="center"><sub>On the TV's home row</sub></td>
+</tr>
+</table>
+
+---
+
 ## Using it
 
 | Tab | |
