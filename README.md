@@ -88,8 +88,8 @@ npm run package && npm run push -- 192.168.2.9 <pin>
 | --- | --- |
 | `npm run full-bootstrap -- <ip>` | Certificate, build, install — the whole setup |
 | `npm run mint -- <ip> [pin]` | Certificate only; adds this TV to the pair you have |
-| `npm run package` | Build and sign a `.wgt` for this machine's TV |
-| `npm run package -- --unsigned` | The same, signed by nobody — what a release carries |
+| `npm run package` | Build a `.wgt` signed by nobody — what a release carries |
+| `npm run package -- --sign` | The same, signed for this machine's TV — what sdb needs |
 | `npm run bootstrap -- <ip>` | Install over sdb (needs Host PC IP pointed here) |
 | `npm run push -- <ip> <pin>` | Install over the LAN, once the app is running |
 | `npm run certs -- <ip> <pin>` | Re-send the TV's certificates; bootstrap already did (`--forget` removes) |

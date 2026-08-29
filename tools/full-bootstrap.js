@@ -117,7 +117,7 @@ const main = async () => {
         run('mint.js', ['--duid', duid].concat(passthrough));
     }
 
-    run('package.js', []);
+    run('package.js', ['--sign']);
 
     run('bootstrap.js', [ip].concat(keepingAuthor && !argv.has('--replace') ? [] : ['--replace']));
 

@@ -186,7 +186,7 @@ async function main() {
     }
 
     if (!existsSync(join(ROOT, WGT))) {
-        throw friendly(`No package at ${WGT}\n\n  Build one first:  npm run package`);
+        throw friendly(`No package at ${WGT}\n\n  Build one first:  npm run package -- --sign`);
     }
 
     // An unsigned .wgt installs over the LAN because the set re-signs it, but over sdb nothing does and the
@@ -194,9 +194,9 @@ async function main() {
     if (!await isSigned(join(ROOT, WGT))) {
         throw friendly(
             `${WGT} is not signed, and sdb will not install an unsigned package.\n\n` +
-            '  `npm run package -- --unsigned` builds those; they are for `npm run push`,\n' +
-            '  which goes through Tizen Homebrew and re-signs on the way in.\n\n' +
-            '  Build a signed one:  npm run package'
+            '  `npm run package` builds those; they are for `npm run push`, which goes\n' +
+            '  through Tizen Homebrew and re-signs on the way in.\n\n' +
+            '  Build a signed one:  npm run package -- --sign'
         );
     }
 

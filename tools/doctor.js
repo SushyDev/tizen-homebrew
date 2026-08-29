@@ -65,7 +65,7 @@ check('signing certificate (packaging only)', () => {
     if (absent.length === 3) {
         return {
             skip: true,
-            detail: `none in ${found.directory} — needed only for \`npm run package\`.`
+            detail: `none in ${found.directory} — needed only for \`npm run package -- --sign\`.`
         };
     }
 
