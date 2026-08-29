@@ -8,6 +8,7 @@ const ui = require('./ui.js');
 const args = require('./args.js');
 const { ROOT } = require('./config.js');
 const certificates = require('./certificates.js');
+const discover = require('./discover.js');
 const { duidOf, describe, localAddressFor, DEVICE_API_PORT } = require('./tv.js');
 
 const VALUED = ['--privilege', '--password', '--name', '--output'];
@@ -29,16 +30,7 @@ const run = (script, argv) => {
 // change, since Tizen will not update across one.
 const main = async () => {
     const argv = args.parse(process.argv.slice(2), VALUED);
-    const [ip] = argv.positionals;
-
-    if (!ip) {
-        throw friendly(
-            'Which TV?\n\n' +
-            '  npm run full-bootstrap -- <tv-ip>\n\n' +
-            '  Find the address in the TV\'s network settings, or check your router.\n' +
-            '  Developer Mode has to be on, with Host PC IP pointed at this machine.'
-        );
-    }
+    const [given] = argv.positionals;
 
     if (argv.positionals.length > 1) {
         throw friendly(
@@ -46,7 +38,19 @@ const main = async () => {
             '  If that second one is a PIN: this command has no use for it. The PIN\n' +
             '  reaches sdbd through Tizen Homebrew, and installing needs sdbd directly,\n' +
             '  which a television pinned to 127.0.0.1 does not allow from here.\n\n' +
-            `  A set that far along updates over the LAN:  npm run push -- ${ip} <pin>`
+            `  A set that far along updates over the LAN:  npm run push -- ${given} <pin>`
+        );
+    }
+
+    // No address given: sweep for sets rather than send somebody to their router.
+    const ip = given || await discover.choose();
+
+    if (!ip) {
+        throw friendly(
+            'Which TV?\n\n' +
+            '  npm run full-bootstrap -- <tv-ip>\n\n' +
+            '  Find the address in the TV\'s network settings, or check your router.\n' +
+            '  Developer Mode has to be on, with Host PC IP pointed at this machine.'
         );
     }
 

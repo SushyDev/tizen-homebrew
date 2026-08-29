@@ -31,8 +31,11 @@ after that.
 git clone https://github.com/SushyDev/tizen-homebrew.git
 cd tizen-homebrew
 npm install
-npm run full-bootstrap -- <tv-ip>
+npm run full-bootstrap
 ```
+
+It sweeps the network for Samsung sets and asks which one — name the address
+yourself with `npm run full-bootstrap -- <tv-ip>` if you already know it.
 
 It asks the TV which device it is, mints a Samsung Partner certificate bound to
 it (a browser opens — sign in), then builds, signs, installs and opens the app.
@@ -169,7 +172,7 @@ npm run package && npm run push -- <tv-ip> <pin>
 
 | | |
 | --- | --- |
-| `npm run full-bootstrap -- <ip>` | Partner certificate, build, install — the whole setup (`--public` overrides) |
+| `npm run full-bootstrap [-- <ip>]` | Partner certificate, build, install — the whole setup. Finds the TV itself if you do not name one (`--public` overrides) |
 | `npm run mint -- <ip> [pin]` | Partner certificate only; adds this TV to the pair you have (`--public` overrides) |
 | `npm run package` | Build a `.wgt` signed by nobody — what a release carries |
 | `npm run package -- --sign` | The same, signed for this machine's TV — what sdb needs |

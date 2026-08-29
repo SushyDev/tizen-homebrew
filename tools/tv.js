@@ -98,10 +98,10 @@ const duidOf = async (ip, pin) => {
     });
 };
 
-const describe = async (ip) => {
+const describe = async (ip, timeout) => {
     try {
         const response = await fetch(`http://${ip}:${DEVICE_API_PORT}/api/v2/`, {
-            signal: AbortSignal.timeout(5000)
+            signal: AbortSignal.timeout(timeout || 5000)
         });
 
         if (!response.ok) return null;
