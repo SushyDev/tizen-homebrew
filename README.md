@@ -66,8 +66,8 @@ https://github.com/user-attachments/assets/c176baef-5690-414c-95a5-7e968464a860
 </td>
 </tr>
 <tr>
-<td align="center"><sub><b><a href="media/tv.mp4">▶ The television</a></b> — 37s · pairing, an install as it lands, the log console, the credits</sub></td>
-<td align="center"><sub><b><a href="media/phone.mp4">▶ The phone</a></b> — 33s</sub></td>
+<td align="center"><sub>▶The television — 37s · pairing, an install as it lands, the log console, the credits</sub></td>
+<td align="center"><sub>▶ The phone — 33s</sub></td>
 </tr>
 </table>
 
