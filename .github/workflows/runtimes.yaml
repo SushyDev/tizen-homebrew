@@ -1,18 +1,8 @@
 # Does the bundle actually run on the Node versions the televisions have?
 #
-# One bundle ships to three Samsung generations running three different Node
-# versions, and the checks that guard that are static: check-syntax.js walks
-# the AST for constructs the floor cannot parse. It cannot see a module that
-# does not resolve. `require('fs/promises')` is a Node 14 specifier, it passed
-# every check on a developer machine running Node 24, and on the set the
-# service died on its first require — the port never opened and there was no
-# log to say why, because nothing had started that could write one.
-#
-# So the bundle is loaded and asked to answer, on each runtime, for real.
-#
-# Every version runs in its own job, which is free here and is why this is a
-# separate workflow from CI: locally the same matrix is `npm run test:matrix`,
-# where the runs share a machine and are given a port each.
+# check-syntax.js walks the AST and cannot see a module that does not resolve: `require('fs/promises')`
+# passed every check on a machine running Node 24, and on the set the service died on its first
+# require. So the bundle is loaded, for real. Locally the same matrix is `npm run test:matrix`.
 
 name: Runtimes
 
@@ -26,32 +16,24 @@ jobs:
     name: node ${{ matrix.node }}
     runs-on: ubuntu-latest
 
-    # Below the floor is reported, not enforced. Knowing how far down the
-    # bundle works is worth having; failing the build over a runtime nothing is
-    # known to use would only teach people to ignore a red mark.
+    # Below the floor is reported, not enforced: a red mark for a runtime nothing uses gets ignored.
     continue-on-error: ${{ matrix.below_floor == true }}
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - node: '8.17.0'
-            below_floor: true
-          - node: '10.24.1'
-            below_floor: true
-          - node: '12.16.3'   # measured: Tizen 6.5, and Tizen 9.0
+          - node: '12.16.3'   # measured: Tizen 6.5
           - node: '14.21.3'
           - node: '16.20.2'
-          - node: '18.18.2'   # measured: reported by a set once
+          - node: '18.18.2'   # measured: Tizen 9.0
           - node: '20.18.1'
           - node: '22.12.0'
 
     steps:
       - uses: actions/checkout@v4
 
-      # The bundle is built with the repo's own toolchain, which is modern.
-      # Only the running of it is done on the old runtime — that is the part
-      # the television does.
+      # Built with the repo's own toolchain; only the running of it is done on the old runtime.
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc

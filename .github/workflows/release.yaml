@@ -1,26 +1,11 @@
 # Builds the widget and opens a draft release for the tag that triggered it.
 #
-# The widget is unsigned on purpose. A Tizen signature names the television it
-# may be installed on — the device id is in the distributor certificate, and
-# Tizen 7 enforces it — so a signed build works only on its builder's set.
-# Tizen Homebrew re-signs everything it installs, itself included, so an
-# unsigned package is the one that installs anywhere. Getting the first copy
-# onto a TV is still `npm run full-bootstrap`, which signs for that set; this
-# is the file every update after it comes from.
-#
-# The release must be a *draft* — GitHub refuses asset uploads once a release
-# is published, and no workflow event fires when someone saves a draft by hand.
-# Publishing it is the last step, and the one that makes the catalogue offer
-# the update: `releases/latest` skips drafts and prereleases.
-#
 #   npm run version:set 1.2.0    # and commit
 #   git tag v1.2.0 && git push origin v1.2.0
 #
-# Exactly one .wgt is attached: an entry is resolved to the first package asset
-# the release carries.
-#
-# Optional repo variable HOMEBREW_CATALOG_URL overrides the catalogue origin
-# baked into the build. Without it, tizen.config.json decides.
+# Unsigned on purpose: a signature names one television, and Tizen Homebrew re-signs what it installs.
+# Draft on purpose: GitHub refuses uploads to a published release, and publishing by hand is what
+# makes `releases/latest` offer the update.
 
 name: Release
 
@@ -51,11 +36,6 @@ jobs:
       - name: Install
         run: npm ci
 
-      # The tag names a version and so does tizen.config.json, and it is the
-      # second that ends up inside the package — and in what a television
-      # compares against to decide it has an update waiting. A release tagged
-      # v1.2.0 whose widget reports 1.1.0 is a support question nobody can
-      # answer from the outside.
       - name: Check the tag matches the version
         if: startsWith(github.ref, 'refs/tags/')
         run: |
@@ -69,10 +49,6 @@ jobs:
             exit 1
           fi
 
-      # Every file that carries a version has to carry the same one. The
-      # check above only compares the tag against tizen.config.json, and it is
-      # the whole set that ends up in the package — a lockfile left a version
-      # behind by a bump is invisible until npm decides to care.
       - name: Versions agree
         run: npm run version:check
 
@@ -82,17 +58,12 @@ jobs:
       - name: Test
         run: npm test
 
-      # `--release` refuses a placeholder catalogue URL, which would produce an
-      # app whose app list is permanently empty on every set that installed it.
-      # A prerelease is held to the same standard as a hand-run build: it may
-      # carry one, because that is what a prerelease is for.
+      # `--release` refuses a placeholder catalogue URL; a prerelease may carry one.
       - name: Package
         env:
           STRICT: ${{ (startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')) && '--release' || '' }}
         run: npm run package -- --unsigned $STRICT
 
-      # "tizenhomebrew.wgt" on the releases page says nothing about which build
-      # it is.
       - name: Name the widget after the version
         id: widget
         run: |
@@ -101,8 +72,6 @@ jobs:
           mv release/tizenhomebrew.wgt "release/${name}"
           echo "path=release/${name}" >> "$GITHUB_OUTPUT"
 
-      # Creates the draft, or replaces the asset on the one an earlier run of
-      # this tag left.
       - name: Open a draft release with it
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -113,7 +82,6 @@ jobs:
           files: ${{ steps.widget.outputs.path }}
           fail_on_unmatched_files: true
 
-      # A hand-run build off a branch has no tag to draft a release for.
       - name: Upload it as an artifact
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4

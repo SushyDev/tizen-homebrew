@@ -1,9 +1,4 @@
-# Publishes the app catalogue to GitHub Pages.
-#
-# The channel fetches this list at runtime and caches it on disk, so adding an
-# app is a commit to catalog/ — no rebuild, and nothing to reinstall on a TV.
-# That is the whole reason the catalogue is a URL rather than a compiled-in
-# list.
+# Adding an app is a commit to catalog/: the channel fetches this at runtime, so nothing is rebuilt.
 #
 # Needs Pages turned on once: Settings → Pages → Source: GitHub Actions.
 
@@ -20,8 +15,7 @@ permissions:
   pages: write
   id-token: write
 
-# A queued run waits for the one in flight rather than cancelling it: this
-# publishes state, and the last write has to be the newest commit.
+# A queued run waits rather than cancelling: this publishes state, and the last write has to be newest.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -38,9 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Malformed JSON here empties the app list on every television that
-      # fetches it, and the failure is silent from the far end — the channel
-      # falls back to its cache and says the origin was unreachable.
+      # Malformed JSON empties the app list on every television, and the failure is silent from there.
       - name: Check the catalogue parses
         run: |
           node -e "
@@ -51,9 +43,7 @@ jobs:
               const named = entry && typeof entry.id === 'string' && typeof entry.name === 'string';
               const sourced = entry && entry.source && ['github', 'url'].includes(entry.source.type) && typeof entry.source.ref === 'string';
               if (!named || !sourced) throw new Error('Entry ' + index + ' is not a usable catalogue entry.');
-              // Optional, and quietly dropped by the service when it is not a
-              // string — which would leave the app silently unable to say it
-              // had an update. A typo here is worth failing for.
+              // Dropped by the service when it is not a string, leaving the app unable to update.
               if ('packageId' in entry && typeof entry.packageId !== 'string') {
                 throw new Error('Entry ' + index + ' has a packageId that is not a string.');
               }

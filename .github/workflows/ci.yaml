@@ -1,8 +1,4 @@
-# Everything that can be checked without a television.
-#
-# The build is here for one reason above the others: `ui/build.js` reads its own
-# output back and refuses CSS a Tizen webview would silently drop, and that
-# check is worth nothing if it only runs on the machine of whoever remembers.
+# The build runs here because `ui/build.js` refuses CSS a Tizen webview would silently drop.
 
 name: CI
 
