@@ -1,17 +1,5 @@
 'use strict';
 
-// Tizen Homebrew, assembled.
-//
-// Read this file top to bottom and you have the whole service: what it knows,
-// what it exposes, and who is allowed to ask. Everything it actually *does*
-// lives in the modules it pulls together, so this stays a table of contents
-// rather than an implementation.
-//
-// The shape is deliberate. Tizen Homebrew runs on the TV, which is the only
-// machine still permitted to reach the TV's own sdb daemon once Developer
-// Mode is pinned to loopback. That single fact is why this exists: it lends its
-// position to a phone, or to a laptop, over the LAN.
-
 const { createServer } = require('http');
 const { readFileSync, existsSync } = require('fs');
 const { join, extname, normalize } = require('path');
@@ -23,7 +11,6 @@ const runtime = require('./obs/runtime.js');
 const platform = require('./obs/platform.js');
 const memory = require('./obs/memory.js');
 
-// Installed before anything else can produce output worth keeping.
 const recorded = startRecording();
 const log = recorded.log;
 
@@ -43,21 +30,12 @@ const { createUpdates } = require('./install/updates.js');
 
 const { ErrorCode } = protocol;
 
-// 8080 is already taken on Samsung TVs by a system service, which answers with
-// `Server: WebServer`. Binding there fails with EADDRINUSE and the app simply
-// appears to hang, which cost an evening to work out once.
+// 8080 is taken by a Samsung system service, so binding there fails with EADDRINUSE.
 const PORT = Number(process.env.HOMEBREW_PORT) || 8091;
 
-// Replaced at build time. The package version barely moves between builds, so
-// it cannot answer "is the code I just pushed the code that is running" — and
-// Tizen Homebrew's service survives its own reinstall, which makes that a
-// real question rather than a pedantic one.
 const BUILD = '__HOMEBREW_BUILD__';
 const ORIGIN = '__HOMEBREW_ORIGIN__';
 
-// A developer build: fixed PIN and a REPL on /dev. Replaced by the bundler rather
-// than substituted afterwards, so an ordinary build has the branch deleted rather
-// than switched off. Unbundled, tools/dev-global.js sets it.
 const DEVELOPER = globalThis.__HOMEBREW_DEV__ === true;
 
 const start = () => {
@@ -68,17 +46,9 @@ const start = () => {
     const net = log.on(Facility.NET);
     const dev = log.on(Facility.DEV);
 
-    // The first thing in the log, and the thing every bug report needs: which
-    // build is running, on what, as whom.
     svc.info(`tizen homebrew ${BUILD} starting`);
-    // The engine, not just the version it claims compatibility with. Samsung
-    // ships lwnode — Node's API on Escargot rather than V8 — on some
-    // generations, and code that is fine on mainline Node of the same version
-    // can still fail there. When a set misbehaves, this line is the first
-    // thing worth knowing and the last thing anybody thinks to ask for.
     svc.info(`${runtime.summary()}, pid ${process.pid}`);
 
-    // Fired, not awaited: a log line must never be between the process and its port.
     platform.describe().then(
         (facts) => platform.summary(facts).forEach((line) => dev.info(line)),
         (error) => dev.warn(`could not read the platform: ${error.message}`)
@@ -91,8 +61,6 @@ const start = () => {
         log.on(Facility.AUTH).info(`pairing pin ${secret} — regenerated every start`);
     }
 
-    // Before anything asks whether this television can sign: bootstrap may have
-    // left a pair beside the config for exactly this moment.
     const adopted = config.adoptHandoff();
 
     if (adopted) {
@@ -110,41 +78,14 @@ const start = () => {
         device: null
     });
 
-    // The built-in origin is baked in at build time, which means changing it
-    // otherwise costs a reinstall on every television that has this on it. So
-    // the stored configuration can name a different one, and does not have to
-    // be recompiled to do it.
     const stored = config.read().catalogUrl;
     const catalogUrl = stored || `${ORIGIN}/catalog.json`;
     const catalogCache = join(homedir(), 'share', 'homebrewCatalog.json');
 
     const catalog = createCatalog({ url: catalogUrl, cachePath: catalogCache, log });
 
-    // Which of those apps are already here, and which have released something
-    // newer since. Tizen Homebrew is one of them: the catalogue is how it
-    // reaches its own next version, so the app list on a phone is also the
-    // update button for the thing drawing it.
+    // No prime() at startup: priming getPackagesInfo wedges the service on Tizen 9.0.
     const updates = createUpdates({ packages, log, config });
-
-    // There is no updates.prime() here, and that is load-bearing.
-    //
-    // Priming asks getPackagesInfo for the installed listing with nothing
-    // waiting on the answer, which is the right idea and, on a QE65S93DAT
-    // running Tizen 9.0, wedges the service. The bind succeeds — the port
-    // accepts TCP — and no HTTP request is ever answered again: neither
-    // callback fires, and neither does the thirty-second deadline in
-    // packages.js meant to catch exactly that. A timer that does not fire is
-    // a blocked JS thread, not a slow platform call.
-    //
-    // Established by installing it four times: at startup it lasted about
-    // twenty seconds, moved after the bind it answered nothing, removed the
-    // service ran clean for over twenty minutes, and restored it wedged again
-    // on the first boot. Asked for on demand — which is what installedNow()
-    // does — the same call is merely slow.
-    //
-    // The cost is that the first client pays the six seconds, which is the
-    // race the `holding` cache was written to remove. Priming needs to happen
-    // late enough that the platform is settled, not at startup.
 
     log.on(Facility.CAT).info(`origin ${catalogUrl}${stored ? ' (from the stored configuration)' : ''}`);
     log.on(Facility.CFG).info(`cache ${catalogCache}`);
@@ -155,17 +96,9 @@ const start = () => {
         log: (message) => log.on(Facility.RELAY).info(message)
     });
 
-    // Off by default, and the one setting worth saying out loud when it is
-    // not: it is arbitrary command execution as the TV's developer user.
     if (relay.enabled) log.on(Facility.RELAY).warn('the command relay is ON from stored configuration');
 
-    // Re-signing, bound to whatever certificates this television is holding.
-    //
-    // Loaded on first use rather than at startup: it pulls in node-forge, jszip
-    // and an XML canonicaliser, and a TV that never installs anything should
-    // not pay to parse them. The certificates are read at the same moment for
-    // the same reason a session is — so a pair sent to the TV a second ago is
-    // the pair that signs the next install, with nothing to invalidate.
+    // Loaded on first use so a television that never installs anything does not parse node-forge.
     const resigner = async () => {
         const { resign } = require('./install/resign.js');
 
@@ -174,12 +107,6 @@ const start = () => {
 
     const installer = createInstaller({ sdb, device, config, resigner, store, log });
 
-    // --------------------------------------------------------------- state
-
-    // Only *changes* are logged. The probe runs every fifteen seconds and a
-    // steady state repeated four times a minute would bury everything else in
-    // the log within an hour — while a route that comes and goes is exactly
-    // the fault this whole service exists to make visible.
     const announce = (state, previous) => {
         if (!previous) {
             dev.info(state.onTv
@@ -195,11 +122,6 @@ const start = () => {
         if (state.ready) {
             log.on(Facility.SDB).ok(`loopback 127.0.0.1:${sdb.SDB_PORT} answered — this TV can install its own apps`);
         } else if (state.onTv) {
-            // What sdbd did, in its own words, and then — separately, and as a
-            // condition rather than a finding — what would cause it. These used
-            // to be one warning that named a remedy: "set Host PC IP to
-            // 127.0.0.1" was printed at somebody who had set it to 127.0.0.1,
-            // every time a healthy set dropped a connection.
             log.on(Facility.SDB).warn(state.sdbDetail
                 ? `loopback 127.0.0.1:${sdb.SDB_PORT} — ${state.sdbDetail}`
                 : `loopback 127.0.0.1:${sdb.SDB_PORT} is not usable (${state.sdbError || state.reason || 'unknown'})`);
@@ -217,17 +139,7 @@ const start = () => {
         const previous = store.select('device');
         const first = await device.probe();
 
-        // A single refused connection is not a television that has stopped
-        // working, and saying so costs more than waiting fifteen seconds to be
-        // sure. sdbd on these sets drops the occasional connection for its own
-        // reasons; every one of those used to flip readiness, take the banner
-        // with it, and print "set Host PC IP to 127.0.0.1" at somebody who had
-        // already set it to 127.0.0.1 — eleven times in three minutes, on a
-        // set where nothing was wrong.
-        //
-        // So a demotion is confirmed before it is believed, and only a
-        // demotion: coming back is reported the moment it happens, because a
-        // television that answers is a television that answers.
+        // sdbd drops the occasional connection, so a demotion is confirmed by a second probe.
         const state = previous && previous.ready && !first.ready
             ? await device.probe()
             : first;
@@ -240,19 +152,11 @@ const start = () => {
     refreshDevice();
     if (device.onTv) setInterval(refreshDevice, 15000);
 
-    // ---------------------------------------------------------------- auth
-
     const fromLoopback = (request) => {
         const address = (request.socket && request.socket.remoteAddress) || '';
         return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address);
     };
 
-    /**
-     * Checks a presented PIN, applying the lockout.
-     *
-     * Returns `{ ok }` or `{ ok: false, code, message }` so callers can answer
-     * over HTTP or the socket without each inventing its own wording.
-     */
     const authorise = (presented) => {
         const lockout = store.select('lockout');
 
@@ -270,9 +174,6 @@ const start = () => {
         return { ok: true };
     };
 
-    // The TV's own addresses, so the screen can show a URL a phone can type.
-    // Read from the interfaces because the page's webapis.network.getIp() is
-    // missing on some models and the device API's `ip` can lag.
     const lanAddresses = () => {
         const interfaces = require('os').networkInterfaces();
         const wiredFirst = (name) => (/^(eth|en)/.test(name) ? 0 : /^(wlan|wl)/.test(name) ? 1 : 2);
@@ -284,14 +185,7 @@ const start = () => {
             .sort((a, b) => wiredFirst(a.iface) - wiredFirst(b.iface));
     };
 
-    // -------------------------------------------------------------- routes
-
-    // The TV's own page polls this service several times a second: the log it
-    // is displaying, the readiness band, the pairing code. Those requests are
-    // the log being *read*, not the system doing anything — and recording them
-    // would mean every poll produced a line that the next poll then delivered,
-    // forever. They are logged at debug, which is off unless HOMEBREW_DEBUG
-    // says otherwise. Everything from anywhere else is an event.
+    // The TV's own page polls these several times a second, so they are logged at debug.
     const POLLED = ['/logs', '/state', '/pin', '/version', '/health'];
 
     const quiet = (request, path) =>
@@ -299,31 +193,15 @@ const start = () => {
 
     const router = createRouter({ log, quiet });
 
-    // Which build is running. Deliberately unauthenticated: `push` reads it
-    // before and after an update to tell whether new code actually took, and
-    // it reveals nothing a client could not learn by looking at the app list.
     router.on.get('/version', (_request, response) => json(response, {
         build: BUILD,
         node: process.version,
-
-        // Readable without a PIN, like the rest of this route, and worth the
-        // few hundred bytes: it is the difference between "the service is not
-        // answering" and "the service is not answering on lwnode".
         runtime: runtime.describe(),
 
         startedAt,
-        // How long *this service* has been running, which is not how long the
-        // process has. Tizen reloads the service into the same process on a
-        // reinstall — see the note in obs/log.js — so process.uptime() keeps
-        // counting across a restart the service itself experienced as a fresh
-        // start. It reported fifty-eight minutes for a service ninety-six
-        // seconds old, which is the number `push` uses to decide whether new
-        // code took, and the number a person reads to decide whether the thing
-        // they just did had any effect.
         uptimeSeconds: Math.round((Date.now() - Date.parse(startedAt)) / 1000),
 
-        // The host process, kept separately rather than dropped: the gap
-        // between the two is the only visible sign that a reload happened.
+        // The gap between the two is the only visible sign that Tizen reloaded the service.
         processUptimeSeconds: Math.round(process.uptime())
     }));
 
@@ -334,8 +212,6 @@ const start = () => {
         addresses: lanAddresses().map((entry) => entry.address)
     }));
 
-    // The PIN itself only ever leaves over loopback — the TV's own page reads
-    // it to display it. A phone on the LAN must be told it by a person.
     router.on.get('/pin', (request, response) => {
         if (!fromLoopback(request)) {
             return failure(response, 403, ErrorCode.UNAUTHORIZED, 'Only readable from the TV itself.');
@@ -351,19 +227,7 @@ const start = () => {
         });
     });
 
-    // Served from what the last refresh found, deliberately not by taking one.
-    //
-    // This used to call refreshDevice(), and refreshDevice() opens an sdb
-    // connection with a four-second deadline. The television's own page polls
-    // this every five seconds, so the set spent its life connecting to its own
-    // sdbd twelve times a minute on top of the fifteen-second sweep that was
-    // already doing it — enough for readiness to flap between "ready" and
-    // "not usable" while nothing about the television had changed, and enough
-    // to hold the thread long enough that a log poll on a one-second timer
-    // reported the service unreachable.
-    //
-    // The sweep owns refreshing. A reader gets the most recent answer, which
-    // is at most fifteen seconds old and is not worth an sdb handshake.
+    // Served from the last sweep: probing here made the set connect to its own sdbd twelve times a minute.
     router.on.get('/state', (request, response) => {
         if (!fromLoopback(request)) {
             return failure(response, 403, ErrorCode.UNAUTHORIZED, 'Only readable from the TV itself.');
@@ -381,10 +245,6 @@ const start = () => {
         return handle();
     };
 
-    // The log, as records rather than as text. `uptime` comes with them so a
-    // client can put its own events on this service's clock: the TV page
-    // writes lines of its own — a launch it attempted, an error in the page —
-    // and they belong in the same dmesg as everything else, in order.
     router.on.get('/logs', (request, response, { query }) =>
         authorisedRead(request, response, () =>
             json(response, { lines: recorded.since(query.get('since')), uptime: recorded.uptime() })));
@@ -417,7 +277,6 @@ const start = () => {
 
             const source = (await readBody(request, 64 * 1024)).toString('utf8');
 
-            // Before it runs: if a line takes the service down, this is the record.
             svc.warn(`eval from ${host(request.socket && request.socket.remoteAddress)}: ` +
                 source.replace(/\s+/g, ' ').slice(0, 200));
 
@@ -434,9 +293,6 @@ const start = () => {
         });
     }
 
-    // Installing a package sent straight here, so a build machine can update
-    // the TV over the LAN. Pinning the developer IP to loopback removes sdb
-    // from every other machine, which would otherwise leave no way in.
     router.on.post('/install', async (request, response) => {
         const verdict = authorise(request.headers['x-homebrew-pin']);
         if (!verdict.ok) return failure(response, verdict.code === ErrorCode.LOCKED_OUT ? 429 : 403, verdict.code, verdict.message);
@@ -455,25 +311,15 @@ const start = () => {
                 (phase, detail) => phases.push(detail ? `${phase}: ${detail}` : phase)
             );
 
-            // Same reason as the socket's install path: the set is holding
-            // something new, and the next app list has to say so.
             updates.changed();
 
             json(response, { ok: true, phases, ...outcome });
         } catch (error) {
             failure(response, 500, error.code || ErrorCode.INTERNAL, error.message, error.remedy);
-            // The phases show how far it got, which is usually the useful part.
             log.on(Facility.PKG).err(`upload install stopped after: ${phases.join(', ') || 'nothing'}`);
         }
     });
 
-    // The certificate pair this television signs with.
-    //
-    // Sent here once, over the PIN, and kept in the same place as everything
-    // else that has to survive a reinstall. There is no route that reads them
-    // back: a client can learn that certificates exist and which device they
-    // are for, which is everything it needs to render a state, and nothing it
-    // could sign with.
     router.on.post('/certificates', async (request, response) => {
         const verdict = authorise(request.headers['x-homebrew-pin']);
         if (!verdict.ok) return failure(response, verdict.code === ErrorCode.LOCKED_OUT ? 429 : 403, verdict.code, verdict.message);
@@ -488,13 +334,8 @@ const start = () => {
             }
         })();
 
-        // Every device the pair names travels with it. The television cannot
-        // read them back out — that needs the ASN.1 parser this service dropped
-        // — so `npm run certs` reads them off the certificate and sends them.
         const devices = ((pair || {}).devices || []).filter((name) => typeof name === 'string' && name);
 
-        // Checked before it is stored, so a pair that cannot be used is refused
-        // now rather than at the end of somebody's next install.
         const opened = (() => {
             try {
                 return require('./install/resign.js').openPair(pair);
@@ -538,9 +379,7 @@ const start = () => {
         json(response, { ok: true });
     });
 
-    // Exits so the platform starts the service again on newly installed code.
-    // Its background-support means it outlives a reinstall, so without this a
-    // pushed Tizen Homebrew build sits on disk unused until the TV is restarted.
+    // Exits so the platform starts the service again on the newly installed code.
     router.on.post('/restart', (request, response) => {
         const verdict = authorise(request.headers['x-homebrew-pin']);
         if (!verdict.ok) return failure(response, 403, verdict.code, verdict.message);
@@ -555,9 +394,6 @@ const start = () => {
         }, 300);
     });
 
-    // The phone UI, served from inside the package.
-    // Vite emits one inlined index.html; in the packaged app it sits at
-    // ui/dist next to the service, and running from source it is one level up.
     const uiRoot = [
         join(__dirname, '..', '..', 'ui', 'dist'),
         join(__dirname, '..', 'ui', 'dist'),
@@ -576,14 +412,11 @@ const start = () => {
         const requested = path === '/' ? '/index.html' : path;
         const file = join(uiRoot, normalize(requested));
 
-        // normalize collapses "..", and this confirms the result is still
-        // inside the UI directory — a path traversal here would serve any
-        // file on the TV to anyone on the network.
+        // Confirms the collapsed path is still inside the UI directory — this would serve any file on the TV.
         if (!file.startsWith(uiRoot) || !existsSync(file)) {
             return failure(response, 404, ErrorCode.NOT_FOUND, `No such file: ${requested}`);
         }
 
-        // The channel theme is the only asset here that is not text.
         const types = {
             '.html': 'text/html',
             '.js': 'application/javascript',
@@ -594,20 +427,14 @@ const start = () => {
 
         const type = types[extname(file)] || 'application/octet-stream';
 
-        // A charset on a binary type is meaningless at best, so it is only
-        // added for the types that are actually text.
         bytes(response, readFileSync(file), type.startsWith('text/') || type.endsWith('javascript')
             ? `${type}; charset=utf-8`
             : type);
     });
 
-    // -------------------------------------------------------------- listen
-
     const server = createServer(router.listener);
 
-    // A failed bind arrives as an event, not a throw, so without this the
-    // service stays alive with nothing listening and the TV page polls a dead
-    // port forever — which is exactly how the 8080 clash presented.
+    // A failed bind arrives as an event, so without this nothing listens and nothing says so.
     server.on('error', (error) => {
         net.err(`cannot listen on ${PORT}: ${error.message}`);
 
@@ -628,8 +455,6 @@ const start = () => {
         addresses.forEach((entry, index) => net.info(
             `${index === 0 ? 'reachable at' : 'also at'} http://${entry.address}:${PORT} (${entry.iface})`));
 
-        // systemd's last startup line, and the most useful one it prints: it
-        // turns "that felt slow" into a number.
         svc.ok(`startup finished in ${took(recorded.uptime())}`);
 
     });
@@ -639,36 +464,13 @@ const start = () => {
     return { server, port: PORT, pin: secret, build: BUILD };
 };
 
-// `onStart` is not a name of our choosing: it is the entry point Tizen's
-// service runtime calls, and a service exporting anything else simply loads
-// and then sits there — the app appears to run while nothing ever listens.
-// Renaming it during a rewrite cost one broken deployment, so build.js now
-// refuses to ship a bundle without it.
+// Tizen's service runtime calls onStart; a service exporting anything else loads and never listens.
 module.exports.onStart = start;
 module.exports.start = start;
 
-// `onRequest` is the other half of that same contract, and leaving it out was
-// not free. Tizen's service runner calls it for every app control request
-// delivered to a service that is *already* running — which is what the TV
-// page's launchAppControl does every time somebody opens the app, on the
-// second launch and every one after it. With nothing there to call, the runner
-// threw
-//
-//     TypeError: app.onRequest is not a function
-//         at MessagePort.<anonymous> (/usr/share/wrt/app/service/service_runner.js:152)
-//
-// into this process on every one of those launches. The service survived it —
-// the process-wide handler in obs/log.js catches it — but it wrote a stack
-// trace into the log each time, which is where it was eventually found:
-// somebody had opened the app to read the log.
-//
-// There is nothing to do with the request. The service is already listening,
-// and it carries nothing this one needs; saying so is the whole job. It is
-// logged at debug because the page writes its own line for the launch, and two
-// records for one event is how a log stops being read.
+// Tizen calls onRequest for launches into a running service; without it the runner throws on each one.
 module.exports.onRequest = () => log.on(Facility.SVC).debug('a launch reached a service that is already running');
 module.exports.BUILD = BUILD;
 module.exports.PORT = PORT;
 
-// On a TV the platform calls onStart(); off-TV this is a development harness.
 if (!device.onTv) start();

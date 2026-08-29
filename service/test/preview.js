@@ -1,21 +1,5 @@
 'use strict';
 
-// How a package comes to have a face.
-//
-// Two halves of one feature. `install/preview.js` opens an archive and reads
-// back what the application calls itself, down to the icon the television
-// will show — which is what turns `download (2).wgt` in a list into the app
-// it actually contains. `install/catalog.js` does the same job for an app
-// nobody has downloaded yet, by knowing where its logo lives.
-//
-// The theme running through every check below is that none of this is allowed
-// to be load-bearing. A package with no icon installs. A catalogue entry whose
-// repository has no logo.png installs. A file that is not a package at all
-// gets refused by the install path, loudly and with a reason — never here, and
-// never as a thrown error out of a function whose whole job is to be a
-// courtesy. So most of what follows is checking that the answer is `null` and
-// not an exception.
-
 const { mkdtempSync, readFileSync, writeFileSync } = require('fs');
 const { tmpdir } = require('os');
 const { join } = require('path');
@@ -30,22 +14,10 @@ const check = (name, ok, detail) => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  <- ${detail}`}`);
 };
 
-// --- reading a package ---------------------------------------------------
-
-// What the package under test actually declares.
-//
-// Read out of the same config.xml the fixture packages, rather than written
-// out below as a literal. A literal was there, and it made this suite fail on
-// every version bump — which is precisely what a release is: `npm run version
-// -- 0.1.1`, commit, tag, and the release build stops on a test about icons.
-// The reader is what is being checked here, not the number it happens to find.
 const widgetVersion = /<widget\b[^>]*\bversion="([^"]*)"/
     .exec(readFileSync(join(__dirname, '..', '..', 'config.xml'), 'utf8'))[1];
 
 {
-    // The manifest is deflated in this one and the icon is stored, which is
-    // how a packaging tool writes them. That means the walk has to inflate one
-    // entry and step over it to reach the other.
     const described = preview.describe(fixture.wgtWithIcon());
 
     check('a package is read down to its name, version and id',
@@ -62,9 +34,6 @@ const widgetVersion = /<widget\b[^>]*\bversion="([^"]*)"/
 }
 
 {
-    // The same package without the picture in it. Every Tizen manifest names
-    // an icon; whether the file is actually there is another question, and one
-    // that has nothing to do with whether the package installs.
     const described = preview.describe(fixture.wgt());
 
     check('a package whose icon is missing still describes itself',
@@ -80,9 +49,6 @@ const widgetVersion = /<widget\b[^>]*\bversion="([^"]*)"/
 }
 
 {
-    // What a head read looks like when the entry it wanted began inside the
-    // window and ended outside it — see HEAD in preview.js. Half a PNG is
-    // worse than none, so it is refused rather than handed on.
     const cut = fixture.wgtWithIcon().slice(0, 200);
 
     check('a package cut off partway through is null, not half an icon',
@@ -90,9 +56,6 @@ const widgetVersion = /<widget\b[^>]*\bversion="([^"]*)"/
 }
 
 {
-    // An icon far over the cap is dropped and everything around it kept.
-    // Pushing a megabyte of artwork down a socket to draw a 40px tile is the
-    // one way this whole feature could cost more than it is worth.
     const bloated = fixture.zipAll([
         {
             name: 'config.xml',
@@ -108,8 +71,6 @@ const widgetVersion = /<widget\b[^>]*\bversion="([^"]*)"/
         described && described.packageId === 'GJBBYNLkgP' && described.icon === null,
         JSON.stringify(described && { ...described, icon: described.icon && 'present' }));
 }
-
-// --- reading one off the television's own disk ---------------------------
 
 {
     const directory = mkdtempSync(join(tmpdir(), 'homebrew-preview-'));
@@ -127,8 +88,6 @@ const widgetVersion = /<widget\b[^>]*\bversion="([^"]*)"/
         preview.describeFile(join(directory, 'absent.wgt')) === null,
         'describeFile should answer for a missing file the same way it answers for a bad one');
 }
-
-// --- an app nobody has downloaded yet ------------------------------------
 
 {
     const entry = usable({

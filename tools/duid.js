@@ -1,40 +1,5 @@
 'use strict';
 
-// The TV's DUID, which is the one thing you cannot mint a certificate without.
-//
-//   npm run duid -- 192.168.2.9
-//   npm run duid -- 192.168.2.9 <pin>     through Tizen Homebrew, once it is on
-//
-// Samsung binds a certificate to a specific television, and `create-samsung-cert
-// --duidList` is where that identity goes. Getting it normally means Tizen
-// Studio's sdb, which is a gigabyte of download for one string, so this asks
-// the TV directly over the same vendored ADB client the service uses.
-//
-// The device API on port 8001 also has a field called `duid`, and it is a trap.
-// On the television this was written against it reports
-// `uuid:21f31367-a5a6-4d3d-8078-8dd4d090a334` while the certificate minted for
-// that same set is bound to `CPCLIM2YRW7DO`. Two different identifiers, one
-// misleading name; a certificate minted against the wrong one fails at install
-// with "Check certificate error", which says nothing about why. So that field
-// is not offered here as an answer, or as a guess.
-//
-// Once a TV is pinned to 127.0.0.1 — the point of this whole project — sdbd
-// stops answering laptops, and the question has to go through the one process
-// still allowed to reach it: Tizen Homebrew itself. Give this the PIN from the
-// TV screen and it asks over the relay, which is as authoritative as asking
-// sdb directly because it *is* asking sdb directly, from the other side.
-//
-// Failing both there is one offline source. A Samsung distributor certificate
-// carries the device it was minted for in its subjectAltName:
-//
-//   URI:URN:tizen:deviceid=BDCPQZFMHIZII
-//
-// That describes the certificate rather than the television, which is a
-// different question — and the difference is not academic. A pair minted for
-// the wrong set produces packages that build, sign, upload and are then
-// refused by the TV with "Check certificate error", which names neither the
-// certificate nor the device.
-
 const ui = require('./ui.js');
 const certificates = require('./certificates.js');
 const { duidOf, describe, localAddressFor, DEVICE_API_PORT } = require('./tv.js');
@@ -43,16 +8,9 @@ function friendly(message) {
     return Object.assign(new Error(message), { isFriendly: true });
 }
 
-/**
- * Every device a distributor certificate was minted for.
- *
- * Offline, and true whether or not the TV is reachable — but it describes the
- * certificate, not whatever is at the other end of the network, which is the
- * whole reason it is reported separately.
- *
- * A list, because `--duidList` is one: reporting only the first name made a
- * pair that covers this television read as one minted for somebody else's.
- */
+// A distributor certificate carries the device it was minted for, which describes the certificate
+// rather than the television — and `--duidList` is a list, so reporting only the first name made a
+// pair that covers this set read as one minted for somebody else's.
 function boundDevices() {
     const { distributor: path, distributorPassword: password } = certificates.locate();
     const devices = certificates.devicesIn(path, password);
@@ -60,6 +18,8 @@ function boundDevices() {
     return devices.length ? { devices, path } : null;
 }
 
+// The device API on port 8001 also serves a field called `duid`, and it is a different identifier
+// entirely: a certificate minted against it fails at install with "Check certificate error".
 async function main() {
     const [ip, pin] = process.argv.slice(2).filter((argument) => argument[0] !== '-');
 
@@ -118,8 +78,6 @@ async function main() {
         return;
     }
 
-    // No sdb. Say what the other source claims, and be plain that it is a lead
-    // rather than an answer.
     const mine = localAddressFor(ip);
 
     ui.warn('sdb would not answer, so this TV was not asked');
@@ -140,10 +98,6 @@ async function main() {
 
     ui.blank();
 
-    // The relay is the answer on a set pinned to loopback, and it is one
-    // argument away — so when no PIN was given, that is the first thing to
-    // say, not the third. Without it this command can only read a certificate
-    // back to somebody who is asking precisely because they doubt it.
     if (!pin) {
         ui.note('To ask the television itself, give it the PIN from the TV screen:');
         ui.blank();

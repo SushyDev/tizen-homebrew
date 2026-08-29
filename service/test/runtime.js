@@ -1,12 +1,5 @@
 'use strict';
 
-// Engine detection, including the one that cannot be reached from a desk.
-//
-// lwnode is what some Tizen generations actually run — Node's API on Escargot
-// rather than V8 — and the only way to check that this names it correctly,
-// short of owning every television Samsung made, is to hand it the version map
-// such a runtime reports. So `describe` takes one.
-
 const runtime = require('../src/obs/runtime.js');
 
 const results = [];
@@ -15,7 +8,6 @@ const check = (name, ok, detail) => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  <- ${detail}`}`);
 };
 
-// What a Tizen set running lwnode reports: Node's API, somebody else's engine.
 const LWNODE = {
     version: 'v12.16.3',
     platform: 'linux',

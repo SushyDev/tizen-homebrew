@@ -1,11 +1,5 @@
 'use strict';
 
-// Reading memory on a set that will not say.
-//
-// A QE65S93DAT on Tizen 9 denies the service its own /proc — process.memoryUsage
-// throws EACCES — so every source here is optional and the interesting cases are
-// the ones where the obvious answer is missing.
-
 const memory = require('../src/obs/memory.js');
 
 const results = [];
@@ -16,13 +10,10 @@ const check = (name, ok, detail) => {
 
 const denied = () => { throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); };
 
-// What the television is: no /proc, but getrusage answers.
 const TIZEN = { memoryUsage: denied, resourceUsage: () => ({ maxRSS: 79608 }) };
 
-// A laptop: everything answers.
 const LAPTOP = { memoryUsage: () => ({ rss: 84 * 1000 * 1000 }), resourceUsage: () => ({ maxRSS: 100000 }) };
 
-// Nothing at all, which is the shape a stricter set would have.
 const MUTE = { memoryUsage: denied, resourceUsage: denied };
 
 {
@@ -33,7 +24,6 @@ const MUTE = { memoryUsage: denied, resourceUsage: denied };
     check('getrusage still gives a peak, in bytes rather than kilobytes',
         it.peakRss === 79608 * 1024, String(it.peakRss));
 
-    // This process is real Node, so the V8 numbers are real too.
     check('the v8 heap answers without /proc',
         typeof it.heap === 'number' && it.heap > 0, String(it.heap));
 
@@ -62,8 +52,6 @@ const MUTE = { memoryUsage: denied, resourceUsage: denied };
 }
 
 {
-    // lwnode's own reading wins where a set offers it, being the number the
-    // platform actually kills on.
     const it = memory.sample({ ...LAPTOP, lwnode: { PssUsage: () => 12345678 } });
 
     check('pss is preferred over rss when a runtime offers it',

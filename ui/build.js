@@ -1,19 +1,11 @@
-// Building both pages, then proving they will render on the television.
-//
-// The phone UI and the TV screen share a design system but are separate
-// documents, and each is inlined into a single file — which rules out code
-// splitting, and so rules out building them in one pass. Two passes it is.
-//
-// The third pass is the one that matters: the build reads its own output back
-// and refuses to ship CSS the TV would drop. See check.js for why that is not
-// paranoia.
-
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { build } from 'vite';
 import { unsupportedCss, stylesOf } from '../tools/css-support.js';
 import { unsupportedJs, scriptsOf } from '../tools/js-support.js';
 
+// Each page is inlined into a single file, which rules out code splitting and so rules out
+// building both in one pass. The third pass reads the output back and refuses CSS the TV would drop.
 const PAGES = ['index', 'tv'];
 
 for (const page of PAGES) {
@@ -28,9 +20,6 @@ const pages = readdirSync('dist')
 const cssComplaints = pages
     .flatMap(({ name, html }) => unsupportedCss(stylesOf(html)).map((problem) => `  ${name}: ${problem}`));
 
-// esbuild leaves regexes alone whatever the target, and one Chromium 63 cannot
-// parse is a SyntaxError over the whole inlined script — a blank page, not a
-// degraded one. See tools/js-support.js.
 const jsComplaints = pages
     .flatMap(({ name, html }) => scriptsOf(html)
         .flatMap((script) => unsupportedJs(script, 'chromium').map((problem) => `  ${name}: ${problem}`)));

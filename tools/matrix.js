@@ -1,22 +1,5 @@
 'use strict';
 
-// Runs the bundle smoke test on every Node this service has to survive.
-//
-//   npm run test:matrix
-//   npm run test:matrix -- --serial
-//   npm run test:matrix -- 12.16.3 18.18.2
-//
-// Three televisions of three Samsung generations run three different Node
-// versions, and a bundle is built once for all of them. That is the whole
-// problem: `require('fs/promises')` is valid everywhere from Node 14 and
-// resolves nowhere before it, so a build that passed every check on a laptop
-// running Node 24 installed cleanly, launched, and never opened its port —
-// with no log to say why, because the service died on its first require.
-//
-// The syntax floor in check-syntax.js walks the AST and cannot see that: a
-// module specifier is not syntax. Actually loading the bundle under an old
-// runtime can, and takes about a second.
-
 const { execFile } = require('child_process');
 const { existsSync } = require('fs');
 const { join } = require('path');
@@ -24,35 +7,16 @@ const { join } = require('path');
 const ui = require('./ui.js');
 const { ROOT } = require('./config.js');
 
-// Every major from the oldest television forward.
+// Runs the bundle smoke test on every Node this service has to survive.
 //
-// The Tizen-to-Node mapping is not published anywhere, so the ones that have
-// actually been read off a set are marked and the rest are covered by testing
-// the major instead of guessing which set uses it. Testing a version nothing
-// runs costs a second; missing one costs an evening.
-// Every Node this bundle has to survive, and which television runs it.
+//   npm run test:matrix [-- --serial] [-- 12.16.3 18.18.2]
 //
-//   Tizen  Year  Chromium  V8           Runtime
-//   10.0   2026  M130      12.x / 13.x  node 18.18.2+
-//   9.0    2025  M120      12.0.267.1   node 18.18.2      · both verified on a set
-//   8.0    2024  M108      10.8         node 12.16.3, transitional
-//   7.0    2023  M94       9.4          node 12.16.3
-//   6.5    2022  M85       8.5          node 12.16.3      · verified
-//   6.0    2021  M76       7.6          node 12.16.3
-//   5.5    2020  M69       6.9          legacy lwnode snapshot
-//   5.0    2019  M63       6.3          legacy lwnode snapshot
-//   4.0    2018  M56       5.6          early lwnode
+// check-syntax.js walks the AST and cannot see that `require('fs/promises')` resolves nowhere
+// before Node 14 — a build that passed every check on a laptop installed, launched and never
+// opened its port. Actually loading the bundle under an old runtime catches it, in about a second.
 //
-// Two mainline runtimes cover Tizen 6.0 through 10: 12.16.3 and 18.18.2. The
-// versions in between are not known to run on any television and are tested
-// regardless — a spare second each, against the alternative of finding out
-// from a set that a release does not start.
-//
-// Below Tizen 6.0 the runtime is lwnode rather than mainline Node, and an
-// lwnode snapshot does not carry a mainline version number fnm can install. So
-// nothing here tests one directly, and 10.24.1 stands in as margin beneath the
-// oldest mainline runtime. runtime.js names lwnode when it sees it, so the
-// first such set to report in will settle what its API level actually is.
+// Tizen 6.0 through 10 run node 12.16.3 or 18.18.2; below 6.0 the runtime is an lwnode snapshot
+// with no mainline version number to install, so 10.24.1 stands in as margin.
 const TARGETS = [
     { node: '12.16.3', note: 'Tizen 6.0, 6.5, 7.0, 8.0 — verified on 6.5' },
     { node: '14.21.3', note: 'no set runs it — first with require("fs/promises")' },
@@ -62,17 +26,7 @@ const TARGETS = [
     { node: '22.12.0', note: 'newer than any set — margin' }
 ];
 
-// The oldest mainline runtime any television is known to use.
-//
-// Versions below it are still run, because knowing how far down the bundle
-// actually works is worth a second — and it is not idle curiosity here, since
-// Tizen 4.0 to 5.5 run lwnode snapshots whose API level is not documented
-// anywhere in this repo. They cannot fail the suite, though: a red mark for a
-// runtime nothing is known to use is how a check stops being read.
-//
-// The two things that break first are already known, if this ever has to drop:
-// `flatMap` in main.js needs Node 11, and the minifier emits optional catch
-// binding, which needs Node 10.
+// Versions below the floor are still run but cannot fail the suite.
 const FLOOR = 12;
 
 const major = (version) => Number(String(version).split('.')[0]);
@@ -118,9 +72,6 @@ const main = async () => {
     ui.heading('test:matrix', `${targets.length} node versions · ${serial ? 'serial' : 'parallel'}`);
     ui.blank();
 
-    // Each run gets its own port, which is the only thing that would collide,
-    // so parallel is the default and --serial is for when a machine would
-    // rather not start eight node processes at once.
     const attempt = async (target, index) => {
         const started = Date.now();
 

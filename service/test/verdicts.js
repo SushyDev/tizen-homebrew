@@ -1,13 +1,5 @@
 'use strict';
 
-// What the television said, and what we tell somebody about it.
-//
-// These are the exact lines televisions have produced, kept as fixtures so a
-// change to the table has to face them again. The last two checks are the ones
-// that matter most: they hold the three lists that drifted apart before — the
-// signatures, the protocol's codes, and the phone's own strings — against each
-// other, so a verdict cannot be added to one and forgotten in the others.
-
 const { readFileSync } = require('fs');
 const { join } = require('path');
 
@@ -20,7 +12,6 @@ const check = (name, ok, detail) => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  <- ${detail}`}`);
 };
 
-// One reading per fixture: what it was called, what it said, what to do.
 const read = (output, context) => {
     try {
         interpret(output, context);
@@ -32,7 +23,6 @@ const read = (output, context) => {
 
 const SUCCESS = 'coreinstall spend time = 1234 ms';
 
-// --- the one that started this ------------------------------------------
 {
     const line = 'app_id[tUb3Xq7Lm9] install failed[118, -11], reason: Author certificate not match :';
     const seen = read(line, { packageId: 'tUb3Xq7Lm9' });
@@ -46,8 +36,6 @@ const SUCCESS = 'coreinstall spend time = 1234 ms';
     check('the remedy names the package that has to go',
         /tUb3Xq7Lm9/.test(seen.remedy) && /vd_appuninstall/.test(seen.remedy), String(seen.remedy));
 
-    // bootstrap.js installs Tizen Homebrew itself, which cannot be removed from
-    // the TV's own relay — so it asks for the command that can.
     const fromBootstrap = read(line, { packageId: 'GJBBYNLkgP', replaceWith: 'npm run bootstrap -- 1.2.3.4 --replace' });
 
     check('and names the command instead when bootstrap is asking',
@@ -58,7 +46,6 @@ const SUCCESS = 'coreinstall spend time = 1234 ms';
         String(read('app_id[x] install failed[118, -14]').remedy));
 }
 
-// --- the rest of the table ----------------------------------------------
 {
     const cases = [
         ['Check certificate error : :Check config.xml', ErrorCode.CERT_REJECTED],
@@ -77,21 +64,16 @@ const SUCCESS = 'coreinstall spend time = 1234 ms';
         /packagemanager\.install/.test(read(cases[3][0]).remedy), String(read(cases[3][0]).remedy));
 }
 
-// --- success, and the absence of an answer -------------------------------
 {
     check('a successful install is not a failure', read(SUCCESS).code === null, String(read(SUCCESS).code));
 
     check('silence is not success either',
         read('').code === ErrorCode.INSTALL_FAILED, String(read('').code));
 
-    // The difference bootstrap.js depends on: some firmware answers a shell
-    // command with nothing at all, and it confirms against the TV's own
-    // application registry instead of treating that as a refusal.
     check('but silence is not a verdict, which is what bootstrap needs',
         failureIn('') === null, JSON.stringify(failureIn('')));
 }
 
-// --- waiting and reading come from the same list -------------------------
 {
     const samples = [
         'app_id[x] install failed[118, -11], reason: Author certificate not match :',
@@ -111,7 +93,6 @@ const SUCCESS = 'coreinstall spend time = 1234 ms';
         settled('...installing') === false, 'stopped waiting too early');
 }
 
-// --- the three lists, held against each other ----------------------------
 {
     const codes = Object.keys(ErrorCode).map((key) => ErrorCode[key]);
 
@@ -119,9 +100,6 @@ const SUCCESS = 'coreinstall spend time = 1234 ms';
         SIGNATURES.every((signature) => codes.indexOf(signature.code) !== -1),
         SIGNATURES.filter((s) => codes.indexOf(s.code) === -1).map((s) => s.code).join(', '));
 
-    // The phone renders a code it has no string for as a bare "Failed.", which
-    // is how `sdbUnreachable` went unnoticed. Reading the UI's own table from
-    // here is ugly and catches it; remembering to do it by hand did not.
     const ui = readFileSync(join(__dirname, '../../ui/src/main.js'), 'utf8');
     const table = /const EXPLANATIONS = \{([\s\S]*?)\n\};/.exec(ui);
     const explained = table ? (table[1].match(/^\s{4}(\w+):/gm) || []).map((line) => line.trim().replace(':', '')) : [];

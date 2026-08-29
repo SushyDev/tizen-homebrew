@@ -1,14 +1,5 @@
 'use strict';
 
-// One command to build the channel.
-//
-//   npm run build
-//
-// Two halves: the pages the television and the phone show, and the service
-// that serves them. Sub-build output is captured and shown only when something
-// fails, so a successful build is a short, readable summary rather than a wall
-// of log.
-
 const { execFileSync } = require('child_process');
 const { existsSync, statSync } = require('fs');
 const { join } = require('path');
@@ -20,8 +11,6 @@ const STEPS = [
     {
         label: 'pages',
         workspace: 'ui',
-        // Vite writes both of them: index.html for the phone, tv.html for the
-        // television. Either missing means the build lied.
         outputs: ['ui/dist/index.html', 'ui/dist/tv.html'],
         summarise: (sizes) => `${ui.bytes(sizes[0])} + ${ui.bytes(sizes[1])} · single files`
     },
@@ -33,21 +22,16 @@ const STEPS = [
     }
 ];
 
-// npm wraps every failure in its own lifecycle boilerplate, which says
-// nothing the underlying tool has not already said. Strip it so the actual
-// compiler error is what a person reads first.
 function cleanOutput(raw) {
     const lines = String(raw).split('\n');
     const kept = [];
 
     for (const line of lines) {
         if (/^npm (error|notice|warn)\b/.test(line.trim())) continue;
-        // Deep frames inside node_modules are noise for a source-level error.
         if (/^\s+at .*[\\/]node_modules[\\/]/.test(line)) continue;
         kept.push(line);
     }
 
-    // Collapse the runs of blank lines that removal leaves behind.
     return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -79,9 +63,6 @@ function runStep(step) {
 }
 
 function main() {
-    // Set before the config is read, so `npm run build -- --dev` and
-    // `HOMEBREW_DEV=1 npm run build` mean the same thing. The workspace builds
-    // are separate processes and inherit it; argv would not survive the hop.
     if (process.argv.indexOf('--dev') !== -1) process.env.HOMEBREW_DEV = '1';
 
     const config = load();

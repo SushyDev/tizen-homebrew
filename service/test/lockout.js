@@ -1,9 +1,5 @@
 'use strict';
 
-// Once the relay exists, guessing the PIN means shell access on the TV. A
-// 6-digit PIN is only 10^6 tries, which is minutes for a script on the LAN,
-// so repeated failures have to stop being cheap. This pins that behaviour.
-
 const http = require('http');
 const os = require('os');
 const fs = require('fs');
@@ -72,7 +68,6 @@ setTimeout(() => {
             return next(conn, 'hello');
         })
         .then(() => {
-            // Five wrong PINs, which is the configured limit.
             const wrong = pin === '000000' ? '111111' : '000000';
             let chain = Promise.resolve();
             for (let i = 0; i < 5; i++) {
@@ -84,8 +79,6 @@ setTimeout(() => {
             return chain;
         })
         .then(() => {
-            // The sixth attempt should be locked out — even with the RIGHT pin,
-            // which is the property that actually matters.
             send(conn, 'hello', { pin });
             return next(conn, 'error');
         })
@@ -95,7 +88,6 @@ setTimeout(() => {
             check('lockout message says how long to wait',
                 /\d+s/.test(msg.payload.message || ''), msg.payload.message);
 
-            // And the correct PIN still does not get through while locked.
             send(conn, 'hello', { pin });
             return next(conn, 'error');
         })

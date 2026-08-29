@@ -1,29 +1,14 @@
 'use strict';
 
-// The smallest HTTP client that does everything Tizen Homebrew needs.
-//
-// This replaces node-fetch, which cost 308KB of the bundle — most of a
-// Fetch/Headers/Response implementation we barely touched. Node 12 has no
-// global fetch, so something has to fill the gap; this is that something, and
-// it is about a hundred lines.
-
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
 
 const DEFAULT_TIMEOUT = 15000;
 
-// GitHub serves release assets as a redirect to object storage, so following
-// them is not optional. The cap is only there to stop a redirect loop.
 const MAX_REDIRECTS = 5;
 
-/**
- * Performs one HTTP request and buffers the reply.
- *
- * Resolves with `{ status, headers, body }` for any completed response,
- * including 4xx and 5xx — a server saying "no" is an answer, not a failure.
- * Rejects only when no answer arrives at all.
- */
+// A hundred lines in place of node-fetch, which cost 308KB of the bundle. Node 12 has no global fetch.
 const request = (url, options = {}) => {
     const { method = 'GET', headers = {}, body, timeout = DEFAULT_TIMEOUT, redirectsLeft = MAX_REDIRECTS } = options;
 
@@ -55,8 +40,6 @@ const request = (url, options = {}) => {
             response.on('error', (error) => failWith(`Response failed: ${error.message}`));
         };
 
-        // In the options, not only via setTimeout: lwnode destroys a request that
-        // carries neither after 15s, which surfaces as ECONNRESET.
         const outgoing = transport.request(target, { method, headers, timeout }, collect);
 
         outgoing.setTimeout(timeout, () => {
@@ -71,7 +54,6 @@ const request = (url, options = {}) => {
     });
 };
 
-/** Fetches and parses JSON, rejecting on a non-2xx status or unparseable body. */
 const getJson = async (url, options = {}) => {
     const { status, body } = await request(url, options);
 
@@ -86,7 +68,6 @@ const getJson = async (url, options = {}) => {
     }
 };
 
-/** Fetches raw bytes, rejecting on a non-2xx status. */
 const getBuffer = async (url, options = {}) => {
     const { status, body } = await request(url, options);
 

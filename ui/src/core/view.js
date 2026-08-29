@@ -1,44 +1,20 @@
-// Rendering, in about fifty lines.
-//
-// The whole UI is a function of one state object, re-run whenever that state
-// changes. That is the entire model — there are no components, no lifecycle
-// and no virtual DOM, because a page with six panels does not need any.
-//
-// The one thing naive innerHTML gets wrong is focus: replacing the document on
-// every keystroke would empty the field being typed into. So the page is split
-// into named sections and only the sections whose markup actually changed are
-// written back. Typing in one panel cannot disturb another.
-
-/**
- * Escapes text for interpolation.
- *
- * Every value in a template goes through this unless explicitly marked safe,
- * so a package name or an error message from the TV cannot become markup.
- */
+// Every value in a template goes through this unless marked raw(), so a package name or a message
+// from the TV cannot become markup.
 const escape = (value) => String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
-/** Marks a string as already-safe markup, so it is interpolated verbatim. */
 const raw = (markup) => ({ __markup: String(markup) });
 
-/**
- * Tagged template for markup.
- *
- * `html`<p>${name}</p>`` escapes name. Nested html`` results and anything
- * wrapped in raw() pass through untouched, and arrays are joined — which is
- * what makes lists read naturally.
- */
 const html = (strings, ...values) => raw(strings.reduce((out, chunk, index) => {
     if (index === 0) return chunk;
 
     const value = values[index - 1];
 
-    // `typeof` rather than truthiness: an empty html`` is legitimate markup
-    // — it is how a view says "nothing here" — and testing it for truth
-    // printed [object Object] on every screen that had nothing to report.
+    // `typeof` rather than truthiness: an empty html`` is legitimate markup, and testing it for
+    // truth printed [object Object] on every screen that had nothing to report.
     const markup = (item) => (item && typeof item.__markup === 'string' ? item.__markup : escape(item));
 
     const rendered = Array.isArray(value) ? value.map(markup).join('') : markup(value);
@@ -46,13 +22,8 @@ const html = (strings, ...values) => raw(strings.reduce((out, chunk, index) => {
     return out + rendered + chunk;
 }, ''));
 
-/**
- * Mounts a view.
- *
- * `sections` maps an element id to a function of state returning markup. On
- * every state change each is re-run, and only those whose output differs are
- * written — so an unchanged panel keeps its DOM, its focus and its scroll.
- */
+// Replacing the document on every keystroke would empty the field being typed into, so the page is
+// split into named sections and only those whose markup changed are written back.
 const mount = (store, sections) => {
     const previous = new Map();
 
@@ -75,19 +46,7 @@ const mount = (store, sections) => {
     return { paint };
 };
 
-/**
- * One delegated listener for the whole page.
- *
- * Because sections are replaced wholesale, per-element listeners would be lost
- * on every repaint. Instead handlers are named in markup with `data-on-click`
- * and looked up here, so markup stays declarative and nothing has to be
- * re-bound after a render.
- */
 const delegate = (handlers) => {
-    // An action is either an exact name — `upload` — or a prefixed one that
-    // carries its argument, like `install:github:owner/repo`. The prefix form
-    // is what lets a list row say what it does without needing a closure, so
-    // markup stays declarative and nothing is re-bound after a repaint.
     const resolve = (action) => {
         if (handlers[action]) return [handlers[action], null];
 
@@ -110,17 +69,6 @@ const delegate = (handlers) => {
     document.addEventListener('change', (event) => dispatch(event, 'data-on-change'));
     document.addEventListener('input', (event) => dispatch(event, 'data-on-input'));
 
-    // An icon that does not load takes itself off the page.
-    //
-    // Catalogue logos are guessed — logo.png in the app's own repository — so
-    // a missing one is the ordinary case and not a fault. Left alone, the
-    // browser draws its own broken-image glyph, which is uglier than anything
-    // this stylesheet contains and says "something is wrong here" about an
-    // app that is perfectly fine. Removing the element uncovers the monogram
-    // tile underneath it, which is what the markup put there for exactly this.
-    //
-    // Captured rather than bubbled: `error` on an image does not bubble, so
-    // there is no other way for one listener to hear all of them.
     document.addEventListener('error', (event) => {
         const image = event.target;
         if (image && image.tagName === 'IMG' && image.parentNode) image.parentNode.removeChild(image);

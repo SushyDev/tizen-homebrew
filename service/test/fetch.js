@@ -1,13 +1,5 @@
 'use strict';
 
-// The HTTP client, and the one property of it that cannot be seen from a desk.
-//
-// lwnode gives any ClientRequest without a timeout a hidden fifteen-second
-// socket timeout and calls destroy() on it, so a slow download surfaces as
-// ECONNRESET with no deadline named. Mainline Node has no such default, which
-// means the protection is invisible here unless it is asserted structurally:
-// every request must carry `timeout` in its options.
-
 const http = require('http');
 
 const fetch = require('../src/remote/fetch.js');
@@ -18,7 +10,6 @@ const check = (name, ok, detail) => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  <- ${detail}`}`);
 };
 
-// Every options object the client hands to http.request, in order.
 const asked = [];
 const realRequest = http.request;
 
@@ -52,7 +43,6 @@ const main = async () => {
     }
 
     {
-        // A redirect starts a second request, and it must not lose the deadline.
         const { server, port } = await listen((request, response) => {
             if (request.url === '/from') {
                 response.writeHead(302, { location: `http://127.0.0.1:${port}/to` });
@@ -72,8 +62,6 @@ const main = async () => {
     }
 
     {
-        // Accepted and then never answered: the deadline is the only thing that
-        // ends this, and it has to end it as a deadline.
         const held = [];
         const { server, port } = await listen((request) => held.push(request));
 

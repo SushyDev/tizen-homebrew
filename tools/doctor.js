@@ -1,8 +1,5 @@
 'use strict';
 
-// Checks everything needed to build, and says exactly how to fix what is
-// missing. Run this first when something is wrong.
-
 const { existsSync, statSync } = require('fs');
 const { join } = require('path');
 
@@ -36,8 +33,6 @@ check('dependencies installed', () => {
     if (!existsSync(join(ROOT, 'node_modules'))) {
         throw new Error('No node_modules. Run: npm install');
     }
-    // Workspaces hoist here; a missing one means an incomplete install. One
-    // package is named per workspace, plus the two the root itself owns.
     const probes = ['vite', 'rolldown', 'ws', 'acorn', 'eslint'];
     const missing = probes.filter((name) => !existsSync(join(ROOT, 'node_modules', name)));
     if (missing.length) {
@@ -78,9 +73,6 @@ check('signing certificate (packaging only)', () => {
 
     const p12 = found.author;
 
-    // Both halves have to be Samsung's. Without a distributor certificate
-    // tizenjs signs with the stock Tizen one, which expired in 2022 and which
-    // the TV refuses — the package builds and only fails on the TV.
     const distributor = found.distributor;
     if (!existsSync(distributor)) {
         throw new Error(

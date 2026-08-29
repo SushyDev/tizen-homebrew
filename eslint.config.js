@@ -1,12 +1,5 @@
 'use strict';
 
-// Correctness linting only — no style opinions.
-//
-// This exists because `node --check` validates syntax but not references, so a
-// constant that is used and never declared ships happily and fails at runtime,
-// on whichever machine first reaches that line. `no-undef` catches exactly
-// that class of bug in a second.
-
 const NODE_GLOBALS = {
     require: 'readonly',
     module: 'writable',
@@ -40,8 +33,6 @@ const BROWSER_GLOBALS = {
     Headers: 'readonly',
     Request: 'readonly',
     Response: 'readonly',
-    // The platform's own inflate and base64, which is why reading a .wgt in
-    // the browser — core/package.js — needs no zip library in the bundle.
     DecompressionStream: 'readonly',
     TextDecoder: 'readonly',
     btoa: 'readonly',
@@ -65,16 +56,10 @@ const BROWSER_GLOBALS = {
     HTMLImageElement: 'readonly',
     HTMLScriptElement: 'readonly',
     Reflect: 'readonly',
-    // Provided by the Tizen platform inside the TV's webview and services.
     tizen: 'readonly',
     webapis: 'readonly'
 };
 
-// The two files under tools/ that the Vite configs import directly. They are
-// ES modules because a Vite config is, which makes them the exception to the
-// CommonJS rule everything else in tools/ follows. The .mjs one is loaded by
-// Vite's own config loader, which reads a bare .js under a package.json with
-// no `type` field as CommonJS and warns that it will one day refuse to.
 const SHARED_ES_MODULES = ['tools/css-support.js', 'tools/postcss-grid-gap.mjs'];
 
 const CORRECTNESS_RULES = {
@@ -88,8 +73,6 @@ const CORRECTNESS_RULES = {
     'no-func-assign': 'error',
     'no-obj-calls': 'error',
     'no-sparse-arrays': 'error',
-    // Missing a `break` is the exact bug the reference implementation shipped,
-    // where a file install fell through and wiped the signing certificates.
     'no-fallthrough': 'error',
     'use-isnan': 'error',
     'valid-typeof': 'error',
@@ -104,13 +87,10 @@ module.exports = [
             '**/release/**',
             '**/.ncc/**',
             '**/.package/**',
-            // A checkout of Samsung's engine, kept here to read rather than to
-            // build. Linting node's own fork fails the suite on their config.
             'lwnode/**'
         ]
     },
     {
-        // Build tooling and the on-TV service.
         files: ['tools/**/*.js', 'service/**/*.js'],
         ignores: SHARED_ES_MODULES,
         languageOptions: {
@@ -121,13 +101,11 @@ module.exports = [
         rules: CORRECTNESS_RULES
     },
     {
-        // Read by the Vite build, so these are ES modules like it is.
         files: SHARED_ES_MODULES,
         languageOptions: { ecmaVersion: 2022, sourceType: 'module' },
         rules: CORRECTNESS_RULES
     },
     {
-        // Both pages this repo ships: ES modules, bundled by Vite.
         files: ['ui/**/*.js'],
         languageOptions: {
             ecmaVersion: 2022,
@@ -137,19 +115,12 @@ module.exports = [
                 XMLHttpRequest: 'readonly',
                 HTMLElement: 'readonly',
                 FileReader: 'readonly',
-                // Vite replaces import.meta.env at build time.
                 process: 'readonly'
             })
         },
         rules: CORRECTNESS_RULES
     },
     {
-        // The build-time half of the UI workspace: the Vite config, the build
-        // script and the development stand-in for the on-TV service. These sit
-        // inside the UI folder but run in Node, so they get Node's globals —
-        // `Buffer` above all, which the dev service frames WebSockets with.
-        //
-        // Listed after the pages block so it wins for the files it names.
         files: [
             'ui/dev/**/*.js',
             'ui/vite.config.js',

@@ -1,42 +1,16 @@
 'use strict';
 
-// Builds the channel theme from the Homebrew Channel's banner sound.
-//
-//   node tools/theme-audio.js <path-to-hbc-checkout>
-//
-// The Wii banner ships its music as two files — an intro that plays once and
-// a loop that plays forever after it — and the Wii's own BNS container simply
-// stores them back to back with a loop point between. This does the same
-// thing for a browser: one file, both parts, and the sample offset where the
-// loop begins written out beside it.
-//
-// Why one file rather than two: a browser can only hand a seamless loop back
-// if the loop lives inside a single decoded buffer. Two buffers means two
-// decodes, two clock domains and an audible seam at the handover no matter
-// how carefully the second is scheduled. One buffer with `loopStart` set is
-// sample-exact by construction. See ui/src/scene/theme.js.
-//
-// Why uncompressed: because the television's decoder cannot be trusted with
-// anything else. This shipped as FLAC first — lossless, a third smaller, and
-// correct in every browser it was tested in. On a Samsung TV, Chromium 76's
-// FLAC decoder returned 77 of the file's 88 blocks and stopped: 11.088s of a
-// 12.631s file, with no error anywhere. The missing 1.5s is the last bar, so
-// every time round the loop the music lost its final beat.
-//
-// A codec that truncates is indistinguishable from a badly chosen loop point,
-// which is why ui/src/scene/theme.js parses this file itself rather than
-// handing it to decodeAudioData. That only works if the container is one a
-// hundred lines of JavaScript can read, so this writes plain RIFF/WAVE: no
-// codec, no block structure, nothing to truncate at, and the samples arrive
-// exactly as the composer left them.
-//
-// It costs about 600KB over the FLAC. That is the price of the loop being
-// right on the one device that has to run it.
-
 const { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } = require('fs');
 const { join, dirname } = require('path');
 
 const ui = require('./ui.js');
+
+// Builds the channel theme from the Homebrew Channel's banner sound: intro and loop written into
+// one file with the loop's sample offset beside it, because a browser can only loop seamlessly
+// inside a single decoded buffer.
+//
+// Plain RIFF/WAVE rather than FLAC: Chromium 76 on a Samsung TV returned 77 of a FLAC's 88 blocks
+// with no error, so every time round the loop the music lost its final beat. It costs about 600KB.
 
 const OUT = join(__dirname, '..', 'ui', 'public', 'theme.wav');
 
@@ -45,13 +19,6 @@ const PARTS = [
     'channel/banner/sound/wiibrew-banner-loop-part.wav'
 ];
 
-/**
- * Reads a RIFF/WAVE file into its format and its samples.
- *
- * Chunks are walked rather than assuming the canonical 44-byte header: a WAV
- * may legally carry LIST or fact chunks before the data, and reading at a
- * fixed offset would silently return metadata as audio.
- */
 function readWave(path) {
     const buffer = readFileSync(path);
 
@@ -70,7 +37,6 @@ function readWave(path) {
         if (id === 'fmt ') format = buffer.slice(offset + 8, offset + 8 + size);
         if (id === 'data') samples = buffer.slice(offset + 8, offset + 8 + size);
 
-        // Chunks are word-aligned, so an odd size is followed by a pad byte.
         offset += 8 + size + (size & 1);
     }
 
@@ -85,7 +51,6 @@ function readWave(path) {
     };
 }
 
-/** Writes 16-bit PCM back out as a canonical WAVE file. */
 function writeWave(path, { channels, rate, bits, samples }) {
     const blockAlign = channels * (bits / 8);
     const header = Buffer.alloc(44);
@@ -128,8 +93,6 @@ function main() {
 
     const [intro, loop] = paths.map(readWave);
 
-    // The two parts are played back to back as one stream, so any difference
-    // in rate or channel count would change pitch or width at the loop point.
     const differs = ['encoding', 'channels', 'rate', 'bits'].filter((key) => intro[key] !== loop[key]);
     if (differs.length > 0) throw new Error(`The two parts disagree on ${differs.join(', ')}`);
     if (intro.encoding !== 1 || intro.bits !== 16) throw new Error('Expected 16-bit PCM parts');
@@ -146,8 +109,6 @@ function main() {
 
     writeWave(OUT, { ...intro, samples: Buffer.concat([intro.samples, loop.samples]) });
 
-    // The FLAC this replaced, if it is still lying around from an older
-    // build. Left in public/ it would be copied into every package for ever.
     rmSync(join(dirname(OUT), 'theme.flac'), { force: true });
 
     const size = readFileSync(OUT).length;

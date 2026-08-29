@@ -1,65 +1,14 @@
-/* ─────────────────────────────────────────────────────────────────────────
-   Tizen Homebrew — the channel.
+/* Every colour below is sampled out of the Homebrew Channel's own art.
 
-   The Homebrew Channel's screen was a shaft of light through deep water:
-   an ocean gradient falling from a lit surface to true black, god rays
-   raking down through it, and bubbles drifting up across the whole thing.
-   Everything else — the panels, the buttons, the focus state — was glass
-   sitting in that water. This is that screen, rebuilt for a Samsung TV and
-   for the phone that drives it.
-
-   Two lineages meet here and they agree with each other more than they
-   disagree. The Homebrew Channel supplies the ground: the sea, the rays,
-   the bubbles, and buttons that are dark glass until they are focused and
-   then turn steel blue. Frutiger Aero supplies the surface treatment: a
-   gloss that falls off across the top half of every pane, a hairline of
-   light along the top edge, and an outer shadow that puts the pane in
-   front of the water rather than printed on it. Both are the same idea —
-   lit glass over depth — a few years apart.
-
-   Every colour below was sampled out of the Homebrew Channel's own art
-   rather than guessed. `background_wide.png` gives the sea, `button.png`
-   and `button_focus.png` give the two button states, `dialog_background`
-   gives the pane, and `bubble1..3.png` give the bubbles (drawn in canvas
-   — see scene/bubbles.js — because a television is 1920 wide and a 64px
-   sprite is not).
-
-   ── What the television's engine will not run ────────────────────────────
-
-   Tizen 5.5 ships Chromium 63 and Tizen 6.5 ships Chromium 76. Both fail at
-   CSS *silently*: an unknown at-rule takes the whole stylesheet with it, an
-   unknown selector takes its rule, and nothing is logged. So the source here
-   is written in modern CSS and PostCSS lowers it — nesting, custom media,
-   custom selectors, `:is()`, `:not()` lists, space-separated colours — and
-   `tools/css-support.js` reads the built file back and refuses anything the
-   TV would drop. The rule is enforced, not remembered.
-
-   Three things it cannot lower, which shape the file:
-
-     · No `clamp()`, `min()` or `max()` before Chromium 79. The type scale is
-       therefore fixed steps with breakpoints between them, not a fluid curve.
-     · No `conic-gradient()` before 69. Iridescence on the bubbles is done in
-       canvas, where the same effect is a handful of colour stops.
-     · `gap` is `grid-gap` until Chromium 66, and `postcss-gap-properties`
-       only rewrites it in a rule that also says `display: grid`. So every
-       gap in this file sits in the same rule as its `display: grid`, and the
-       build fails if one does not. Flex gap does not arrive until 84 and is
-       never used.
-   ───────────────────────────────────────────────────────────────────────── */
+   Chromium 63 and 76 fail at CSS silently, so this is modern CSS lowered by PostCSS and checked
+   by tools/css-support.js: no clamp(), no conic-gradient(), and every `gap` in the same rule as
+   its own `display: grid`, which is the only shape `grid-gap` lowering recognises. */
 
 @custom-media --wide (min-width: 48rem);
 
-/* Everything a person can put focus on, named once. The TV remote's focus
-   engine (core/remote.js) collects exactly this set. */
 @custom-selector :--control button, [href], input, select, textarea, [tabindex];
 
 :root {
-  /* ── The sea ──────────────────────────────────────────────────────────
-     Sampled down the centre of background_wide.png at 0/10/20…80%. The
-     surface is lit, the floor is true black, and the fall between them is
-     what makes the screen read as depth rather than as a blue rectangle.
-     True black at the bottom also means an OLED simply turns those pixels
-     off, which is the same reason the previous design was black all over. */
   --sea-lit:   #1c86b8;
   --sea-0:     #1775a3;
   --sea-1:     #166c97;
@@ -71,11 +20,6 @@
   --sea-7:     #031118;
   --abyss:     #000000;
 
-  /* ── Glass ────────────────────────────────────────────────────────────
-     dialog_background.png, which is not a flat panel: it is lit along the
-     top, falls to near-black through the middle, and lifts again at the
-     bottom where the water behind it bounces back up. That third stop is
-     the whole reason it looks like glass and not like a dark box. */
   --pane-top:    rgb(28 65 84 / 88%);
   --pane-mid:    rgb(4 12 16 / 82%);
   --pane-floor:  rgb(12 29 37 / 88%);
@@ -83,66 +27,25 @@
   --pane-lip:    rgb(255 255 255 / 40%);
   --pane-gloss:  rgb(255 255 255 / 13%);
 
-  /* A control resting on a pane, rather than on the water. */
   --inset:       rgb(0 0 0 / 42%);
   --inset-edge:  rgb(140 190 216 / 26%);
 
-  /* ── Ink ───────────────────────────────────────────────────────────────
-     Cool white, because everything behind it is blue. The contrast figures
-     are against --pane-mid, which is the darkest thing text ever sits on. */
-  --ink:   #eef6fb;    /* 17:1 — values, names, headings                  */
-  --read:  #bed5e3;    /* 11:1 — prose                                    */
-  --dim:   #85a2b4;    /*  6:1 — secondary                                */
-  --faint: #5b7686;    /*  3.5:1 — labels and rules only                  */
+  /* Ratios are against --pane-mid, the darkest thing text ever sits on. */
+  --ink:   #eef6fb;
+  --read:  #bed5e3;
+  --dim:   #85a2b4;
+  --faint: #5b7686;
 
-  /* ── Signal ────────────────────────────────────────────────────────────
-     One aqua, the colour of the lit surface, spent in three places: the
-     wordmark, the pairing code, and the single primary action. Semantic
-     colours below are separate and never borrowed for emphasis. */
   --signal:     #7fe3ff;
   --signal-lit: #b8f1ff;
   --signal-ink: #04222e;
 
-  /* ── The three states ──────────────────────────────────────────────────
-     Ready, waiting, refused — and deliberately not green, yellow and red.
+  /* Not green, yellow and red: re-derived from the light in this water, at half saturation. */
+  --lock:  #7ad4c6;
+  --warn:  #e6c491;
+  --fault: #e59aa2;
 
-     Traffic-light colours are a convention, not a design. Dropped into a
-     screen that is otherwise entirely blue they read as status pasted over a
-     picture: a lawn-green console line and a hazard-yellow one, sitting in
-     the ocean. The convention is doing no work either — nothing here is a
-     dashboard, and every one of these states already says in words what it
-     is.
-
-     So the set is built the way a terminal theme is built. Take the roles,
-     throw away the stock hues, and re-derive them from one idea until they
-     look like they were always there. The idea is the light in this water:
-
-       · Turquoise is light coming through clean. Ready.
-       · Amber is surface light — and warm light is the first thing water
-         takes away, so at this depth it cannot be anything but a signal from
-         above. Something outside the app needs a person.
-       · Coral is the one living red down here. Refused.
-
-     All three sit at roughly half saturation, the way the Homebrew Channel's
-     own dialog icons did (#78c868, #c86868, #6868c8 — every one of them S47
-     L60), which is what keeps them from competing with the aqua that carries
-     the pairing code. They are matched in weight to each other, so none
-     shouts louder than its meaning: 10:1, 12:1 and 10:1 on the darkest pane.
-
-     Warmth, not hue, is what makes the last two read as exceptions. They are
-     the only warm colours anywhere in the interface. */
-  --lock:  #7ad4c6;    /* ready, installed — turquoise                    */
-  --warn:  #e6c491;    /* needs a person — amber, light from the surface  */
-  --fault: #e59aa2;    /* refused, failed — coral                         */
-
-  /* ── Focus ─────────────────────────────────────────────────────────────
-     button_focus.png, sampled at the same stops as button.png. The channel
-     did not draw a ring around the focused thing — it lit the thing itself,
-     which from three metres is the only treatment that actually reads.
-
-     So no button draws a halo, and `--focus-halo` is left to the controls
-     that have no fill to light: a text field, a tab, a row that is itself a
-     button. Those have nothing else to say it with. */
+  /* The channel lit the focused thing itself, so --focus-halo is only for controls with no fill. */
   --focus-lip:  #c2d6e0;
   --focus-0:    #7da9bf;
   --focus-1:    #53839b;
@@ -152,19 +55,7 @@
   --focus-foot: #507a8f;
   --focus-halo: rgb(125 227 255 / 45%);
 
-  /* ── Surfaces ──────────────────────────────────────────────────────────
-     The four fills a control can have, written once and referred to by name.
-
-     This is not tidying. "Focused" and "current" have to be the *same*
-     treatment or the interface is lying about which thing the remote will
-     act on, and three copies of a nine-stop gradient are three chances for
-     them to drift. A custom property holding a gradient is substituted as a
-     token, so Chromium 63 resolves these exactly as if they had been typed
-     in place.
-
-     Both dark fills stop short of opaque, so the water still shows through
-     a control the way it showed through the channel's own — its buttons
-     were drawn at 90% alpha for precisely this reason. */
+  /* "Focused" and "current" have to be one treatment, and three copies are three chances to drift. */
   --fill-glass: linear-gradient(to bottom,
     rgb(166 166 166 / 62%)  0%,
     rgb(68 68 68 / 88%)     8%,
@@ -201,24 +92,13 @@
     #1d9bbc 86%,
     #4cc4e6 100%);
 
-  /* ── Faces ─────────────────────────────────────────────────────────────
-     No web fonts: this page is served by a television that may have no
-     route to the internet, so a font request would fail silently and shift
-     the layout on exactly the device that has to work.
-
-     The split does the identity work. Prose is set in the UI face and
-     anything the machine produced — a code, a version, a size, a path, an
-     id — is monospace, so you can tell at a glance what came from a person
-     and what came from the device. */
+  /* No web fonts: a television may have no uplink, and the request would fail silently. */
   --sans: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI Variable",
           "Segoe UI", Roboto, "Droid Sans", "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono",
           "Roboto Mono", Menlo, Consolas, monospace;
 
-  /* ── Scale ─────────────────────────────────────────────────────────────
-     Ratio ~1.3. Phone first; the wider step is for a monitor. The
-     television resets all of these in `.tv` further down, because it is
-     read from three metres and nothing on it can be sized in rem. */
+  /* Phone first. `.tv` resets all of these: nothing read from three metres can be sized in rem. */
   --micro: 0.6875rem;
   --label: 0.75rem;
   --body:  0.9375rem;
@@ -226,8 +106,6 @@
   --hero:  2.25rem;
   --code-field-size: 1.625rem;
 
-  /* Radii come from the art: the channel rounded its panes at about 10 of
-     520 pixels and its buttons harder, at about 8 of 48. */
   --radius:       0.5rem;
   --radius-pane:  0.75rem;
 
@@ -245,8 +123,6 @@
   }
 }
 
-/* ── Foundations ─────────────────────────────────────────────────────── */
-
 *, *::before, *::after { box-sizing: border-box; }
 
 html {
@@ -258,8 +134,6 @@ html {
 
 body {
   margin: 0;
-  /* Transparent, because the sea is painted by .sea behind everything. A
-     background here would cover it. */
   background: transparent;
   color: var(--read);
   font-family: var(--sans);
@@ -272,20 +146,6 @@ body {
 
 p { margin: 0; }
 
-/* ── The sea ─────────────────────────────────────────────────────────────
-   Two fixed layers behind every page: the water, and the bubbles rising
-   through it. Both are `position: fixed` so scrolling the phone's content
-   moves the content and not the ocean — the water is the room the app is
-   in, not part of the document.
-
-   The rays are three repeating gradients at slightly different angles and
-   deliberately unrelated periods, so they beat against each other and never
-   resolve into stripes. That irregularity is the whole effect; a single
-   repeating gradient reads as corduroy. They are laid *under* a fade to
-   black so they die out with the light, which is also how the channel's
-   own artwork handles it — by around 80% down there is nothing left to
-   light. */
-
 .sea {
   position: fixed;
   top: 0;
@@ -297,7 +157,6 @@ p { margin: 0; }
 
   background-color: var(--abyss);
   background-image:
-    /* the light dying with depth — painted over the rays, not under */
     linear-gradient(to bottom,
       rgb(0 0 0 / 0%) 0%,
       rgb(0 0 0 / 8%) 42%,
@@ -305,13 +164,6 @@ p { margin: 0; }
       rgb(0 0 0 / 85%) 78%,
       var(--abyss) 90%),
 
-    /* Three rakes of light, none of them in step with the others.
-
-       The angle is the direction the gradient *travels* and the bands run
-       across it, so light falling almost vertically is a gradient running
-       almost horizontally — near 90deg, not near 0. Writing 3deg here lays
-       the rays flat on their side, which reads as a fault in the panel
-       rather than as water. */
     repeating-linear-gradient(93deg,
       rgb(255 255 255 / 0%) 0px,
       rgb(255 255 255 / 4.5%) 41px,
@@ -325,11 +177,9 @@ p { margin: 0; }
       rgb(190 235 255 / 2.5%) 23px,
       rgb(255 255 255 / 0%) 59px),
 
-    /* the surface, brightest above and slightly off-centre */
     radial-gradient(120% 55% at 62% -8%,
       rgb(150 226 255 / 42%), rgb(150 226 255 / 0%) 62%),
 
-    /* the water itself */
     linear-gradient(to bottom,
       var(--sea-0)  0%,
       var(--sea-1) 10%,
@@ -342,8 +192,6 @@ p { margin: 0; }
       var(--abyss) 84%);
 }
 
-/* The bubble field. Sized and driven by scene/bubbles.js; everything here
-   just puts it in the water and keeps it out of the way of input. */
 .bubbles {
   position: fixed;
   top: 0;
@@ -354,18 +202,7 @@ p { margin: 0; }
   pointer-events: none;
 }
 
-/* ── Layout ──────────────────────────────────────────────────────────────
-   Four primitives, all grid, all gapped. Between them they lay out every
-   screen: things above each other, a thing with an action beside it, a few
-   things on one baseline, and a control with its button.
-
-   Each carries its own `display: grid` in the same rule as its gap. That is
-   not stylistic — see the note at the top of the file. */
-
-/* Things above each other. The single explicit column is what keeps a long
-   package name inside its pane instead of pushing the layout wider: a track
-   sized `auto` refuses to shrink below its content, `minmax(0, 1fr)` does
-   not. Every container in this file that holds text does this. */
+/* The single explicit column is what keeps a long word from widening the grid it sits in. */
 .stack {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -373,15 +210,11 @@ p { margin: 0; }
   gap: 1rem;
 }
 
-/* Set outright rather than through an inherited variable: a custom property
-   would cascade into nested stacks and quietly resize them. Each repeats
-   `display: grid` so the gap survives the lowering. */
+/* Set outright: the plugin pairing a gap with its `display: grid` cannot see through a token. */
 .stack-tight { display: grid; gap: 0.375rem; }
 .stack-snug  { display: grid; gap: 0.75rem; }
 .stack-wide  { display: grid; gap: 1.25rem; }
 
-/* Something that fills the width, and something that does not — a name and
-   its install button, a title and its counter. */
 .split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -391,7 +224,6 @@ p { margin: 0; }
 
 .split-baseline { align-items: baseline; }
 
-/* A few things sharing one baseline, left to right, the first shrinking. */
 .inline {
   display: grid;
   grid-auto-flow: column;
@@ -401,8 +233,6 @@ p { margin: 0; }
   gap: 0.5rem;
 }
 
-/* Controls that belong together: the quiet one that fetches a fact and the
-   loud one that acts on it, at the end of a row or under a list. */
 .controls {
   display: grid;
   grid-auto-flow: column;
@@ -411,7 +241,6 @@ p { margin: 0; }
   gap: 0.5rem;
 }
 
-/* An input with its button. */
 .entry {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -442,16 +271,6 @@ p { margin: 0; }
   text-overflow: ellipsis;
 }
 
-/* ── Type roles ──────────────────────────────────────────────────────────
-   Anything the machine produced is monospace and tabular, so digits never
-   change width as they update — on a page that repaints in place, that is
-   the difference between steady and twitching.
-
-   Everything that sits over the water carries a shadow. The channel did the
-   same thing, and for the same reason: the sea is light at the top and
-   black at the bottom, so text with no shadow is legible at one end of the
-   screen and not the other. */
-
 .mono {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
@@ -459,8 +278,6 @@ p { margin: 0; }
   letter-spacing: -0.01em;
 }
 
-/* The eyebrow on a field. Uppercase this small only reads with generous
-   tracking — that is what the letter-spacing buys, not decoration. */
 .label {
   font-family: var(--mono);
   font-size: var(--label);
@@ -486,35 +303,11 @@ p { margin: 0; }
 .ink   { color: var(--ink); }
 .wrap  { word-break: break-word; }
 
-/* The log's severities — the five the service writes, named the same at both
-   ends so a line cannot mean one thing in the log and another on the screen.
-
-   `info` is the ordinary case and it is deliberately not faint: a line read
-   from three metres has to clear the same bar as anything else on the screen,
-   and --faint is a colour for rules and scaffolding, not for sentences. The
-   timestamp and the facility are that scaffolding, and they have the two
-   quietest inks to themselves.
-
-   Colour is rationed. A television that started cleanly shows two turquoise
-   lines in a log of blue-white ones — it is listening, and installs will
-   work — and nothing else. That is what makes a gold or coral line mean
-   something when it does appear. */
 .tone-debug { color: var(--faint); }
 .tone-info  { color: var(--dim); }
 .tone-ok    { color: var(--lock); }
 .tone-warn  { color: var(--warn); }
 .tone-err   { color: var(--fault); }
-
-/* ── The wordmark ────────────────────────────────────────────────────────
-   The channel set its name in three weights on one line — a small "the", the
-   name itself carrying all the weight, and a small "channel" after it — and
-   lit the whole thing from behind so it floated off the water. That is what
-   this is, in type rather than as a bitmap, so it is sharp at 1920 and at
-   360 alike.
-
-   The glow is two shadows, not one: a tight dark shadow that separates the
-   letters from whatever is behind them, and a wide aqua one that is the
-   light coming through the water onto them. */
 
 .mark {
   display: grid;
@@ -528,10 +321,6 @@ p { margin: 0; }
   text-transform: lowercase;
   white-space: nowrap;
 
-  /* The masthead sits in the lit surface, the brightest part of the whole
-     screen, where the secondary ink used everywhere else simply disappears.
-     White at low opacity holds against both the surface above and the abyss
-     below; a grey only ever holds against one of them. */
   color: rgb(238 246 251 / 62%);
   text-shadow: 0 1px 3px rgb(0 0 0 / 55%);
 
@@ -548,8 +337,6 @@ p { margin: 0; }
   & b i { font-style: normal; color: var(--signal); }
 }
 
-/* On the television the mark is the only decorative thing on screen, so it
-   is allowed to be large. */
 .mark-hero {
   font-size: 1.2vw;
   letter-spacing: 0.42em;
@@ -557,41 +344,13 @@ p { margin: 0; }
   & b { font-size: 2.5em; }
 }
 
-/* ── One line about gradients under borders ──────────────────────────────
-   Every lit surface below pairs a translucent border with a gradient, and
-   that combination has a trap in it.
-
-   A background image is positioned against the *padding* box by default and
-   painted into the *border* box — so the strip under a 1px border is not the
-   gradient's first pixel. It is the gradient tiled again, which means the
-   top border shows the gradient's last colour. Every button in this
-   interface therefore drew a hairline of its own dark bottom stop across its
-   lit top edge, and every pane drew one too: a dark line exactly where the
-   light is supposed to be.
-
-   Naming the border box as the origin makes the gradient span what it is
-   painted into, so 0% is the actual top edge. The pairing code's cell grid
-   is the one deliberate exception and sets its own origin further down. */
-
+/* A background is positioned against the padding box and painted into the border box, so the strip
+   under a 1px border is the gradient tiled again — a dark hairline exactly where the light belongs. */
 .glass, .state, .btn, .tab, .field, .digit, .key {
   background-origin: border-box;
 }
 
-/* ── Glass ───────────────────────────────────────────────────────────────
-   The pane, and the one surface everything else is built from.
-
-   Four things make it glass rather than a dark box, and all four came off
-   dialog_background.png: it is lit at the top, near-black through the
-   middle, lifted again at the floor by light bouncing back up, and edged
-   with a hairline that is brighter along the top than the bottom. The
-   ::before adds the Aero half of it — a gloss that covers the top 46% and
-   falls away on an ellipse, which is what makes the surface read as curved
-   rather than flat.
-
-   backdrop-filter is deliberately last and deliberately optional. Chromium
-   76 has it and 63 does not; on 63 the declaration is dropped and the pane
-   is simply a translucent one, which is what the channel's own dialogs
-   were. Nothing here depends on it. */
+/* backdrop-filter is last and optional: Chromium 63 drops it and the pane is simply translucent. */
 
 .glass {
   position: relative;
@@ -608,17 +367,7 @@ p { margin: 0; }
   -webkit-backdrop-filter: blur(14px) saturate(140%);
   backdrop-filter: blur(14px) saturate(140%);
 
-  /* The gloss. Elliptical bottom corners are what stop it reading as a
-     second rectangle stacked on the first.
-
-     Note what is *not* here: `overflow: hidden` on the pane. The obvious way
-     to keep this inside the rounded corners is to clip it there, and it is
-     the wrong way — a pane that clips its own contents also clips every focus
-     halo, every button shadow and every lit edge belonging to a control
-     inside it, which is most of what makes those controls read as glass. The
-     gloss is absolutely positioned against the padding box and carries the
-     same radius as the pane it sits in, so it is already inside the corners
-     and nothing has to be cut off to keep it there. */
+  /* No `overflow: hidden` here: it would clip every focus halo and lit edge inside the pane too. */
   &::before {
     content: "";
     position: absolute;
@@ -626,8 +375,6 @@ p { margin: 0; }
     left: 0;
     right: 0;
     height: 46%;
-    /* One pixel tighter than the pane: this sits inside the border, so the
-       curve it has to follow is the border's inner one. */
     border-radius:
       calc(var(--radius-pane) - 1px) calc(var(--radius-pane) - 1px) 50% 50% /
       calc(var(--radius-pane) - 1px) calc(var(--radius-pane) - 1px) 14% 14%;
@@ -636,7 +383,6 @@ p { margin: 0; }
     pointer-events: none;
   }
 
-  /* Content has to clear the gloss, which is painted over the pane. */
   & > * { position: relative; }
 }
 
@@ -646,26 +392,11 @@ p { margin: 0; }
   .pad { padding: 1.25rem; }
 }
 
-/* Rows carry a hairline between them rather than each becoming its own pane.
-   Density is the point: this is a list of machine facts. */
 .row {
   padding: 0.8125rem 0;
 
   & + & { border-top: 1px solid rgb(167 214 238 / 14%); }
 }
-
-/* ── An app, as itself ───────────────────────────────────────────────────
-   Every package in this interface arrives named after a file, and the archive
-   it arrived in knows better — its own name, its version, the id it installs
-   under, and the icon the television will put on the home row. This is where
-   those land: a tile, a name with a version beside it, and one line of
-   machine facts underneath.
-
-   The tile is the same recess a field is — pressed into the pane, lit along
-   its top edge — with the artwork sitting inside it. That is deliberate. An
-   app icon is a picture from somewhere else, drawn by somebody with no idea
-   what it would sit on, and giving every one of them the same inset frame is
-   what stops a list of them from reading as stickers stuck onto the glass. */
 
 .ident {
   display: grid;
@@ -689,17 +420,12 @@ p { margin: 0; }
   box-shadow: inset 0 2px 5px rgb(0 0 0 / 45%), inset 0 1px 0 rgb(255 255 255 / 12%);
 }
 
-/* The upload well holds one package and nothing else, so there it is the
-   subject of the panel rather than a bullet beside a line of text. */
 .tile-hero {
   width: 3.25rem;
   height: 3.25rem;
   border-radius: var(--radius-pane);
 }
 
-/* The letter behind the artwork, and the reason a missing icon costs nothing.
-   --faint is the ink for scaffolding, which is exactly what this is: a shape
-   holding the right space until a picture arrives, or instead of one. */
 .tile-mark {
   font-family: var(--mono);
   font-size: 1.125rem;
@@ -709,10 +435,7 @@ p { margin: 0; }
   text-shadow: 0 1px 2px rgb(0 0 0 / 55%);
 }
 
-/* Over the letter, filling the tile. Icons arrive at whatever shape their
-   author drew — a square 512px PNG out of a manifest, a wide banner out of a
-   repository's logo.png — and `cover` crops rather than letterboxes, so a
-   list of tiles stays one column of one shape however mixed the sources. */
+/* Icons arrive at whatever shape their author drew; object-fit keeps the column one shape. */
 .tile-art {
   position: absolute;
   top: 0;
@@ -721,12 +444,6 @@ p { margin: 0; }
   height: 100%;
   object-fit: cover;
 }
-
-/* ── State ───────────────────────────────────────────────────────────────
-   A severity band down the left edge and a matching wash behind it, so the
-   state reads before any word does. Washed rather than filled: a solid
-   colour pane over this background shouts far louder than the message
-   deserves, and on an OLED it lights half the screen. */
 
 .state {
   position: relative;
@@ -750,15 +467,6 @@ p { margin: 0; }
   text-shadow: 0 1px 3px rgb(0 0 0 / 70%);
 }
 
-/* Three ways to say which one this is, and no coloured wash across the pane.
-
-   The wash was the mistake: a band of colour laid over the glass reads as a
-   highlighter drawn on top of the picture rather than as part of it, and at
-   the width of a television it is most of what you see. What is left is what
-   the channel's own dialogs did — the pane is the pane, and the state is a
-   lit edge down its left side, with the one word that names it in the same
-   colour. Colour appears twice, in small quantities, exactly where it means
-   something. */
 .state-ok {
   border-left-color: var(--lock);
   box-shadow: var(--lift), inset 0 1px 0 var(--pane-lip),
@@ -783,8 +491,6 @@ p { margin: 0; }
   & .state-head { color: var(--fault); }
 }
 
-/* ── The bar ─────────────────────────────────────────────────────────── */
-
 .bar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -793,25 +499,11 @@ p { margin: 0; }
   padding: 0.5rem 0 0.875rem;
   border-bottom: 1px solid rgb(167 214 238 / 18%);
 
-  /* Everything in the bar is in the lit surface too. See .mark. */
   & .micro {
     color: rgb(238 246 251 / 55%);
     text-shadow: 0 1px 3px rgb(0 0 0 / 55%);
   }
 }
-
-/* ── Controls ────────────────────────────────────────────────────────────
-   button.png and button_focus.png, in gradients rather than as bitmaps.
-
-   Both sprites are the same object twice: a bright lip along the top, a
-   long fall to near-black at 70%, and a lift at the foot where the water
-   bounces light back up. Unfocused it is smoked glass; focused it is lit
-   steel blue. The channel changed the *fill* rather than drawing a ring
-   around it, and from three metres that is the only treatment that reads —
-   an outline disappears at that distance, a lit button does not.
-
-   48px minimum: the smallest target a thumb reliably hits, and on the TV
-   the pointer is a remote. */
 
 .btn {
   position: relative;
@@ -834,12 +526,7 @@ p { margin: 0; }
   text-shadow: 0 1px 2px rgb(0 0 0 / 70%);
   cursor: pointer;
 
-  /* Explicit, and not optional. A <button> with no background-color of its
-     own gets the engine's `buttonface`, which under `color-scheme: dark` is a
-     mid grey — so a translucent gloss gradient painted over it comes out as a
-     pale pill instead of as smoked glass. Every control in this file that
-     paints itself with a `background-image` has to name its base colour, or
-     it is compositing over whatever the browser felt like. */
+  /* Not optional: a <button> with no background-color of its own composites over anything. */
   background-color: transparent;
   background-image: var(--fill-glass);
 
@@ -856,16 +543,6 @@ p { margin: 0; }
   }
 }
 
-/* One rule for every way a control can become the current one: the pointer
-   is over it, the keyboard is on it, or the TV remote's focus engine has
-   put its cursor there. They all mean the same thing to a person, so they
-   all look the same. `.is-focus` is what core/remote.js sets.
-
-   No ring. The channel lit the button itself and drew nothing around it, and
-   this used to do both — a lit fill *and* a hard two-pixel halo, which is the
-   silhouette of a browser's own focus outline and read as one. What is left
-   is the whole of the original treatment: the fill turns steel, the top lip
-   brightens, and the border comes up to white. */
 .btn:hover:not(:disabled),
 .btn:focus:not(:disabled),
 .btn.is-focus:not(:disabled) {
@@ -885,7 +562,6 @@ p { margin: 0; }
     inset 0 2px 4px rgb(0 0 0 / 45%);
 }
 
-/* Repeated down a list, so it must not outweigh the names beside it. */
 .btn-ghost {
   min-height: 40px;
   padding: 0 0.875rem;
@@ -897,9 +573,6 @@ p { margin: 0; }
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 18%);
 }
 
-/* Chrome rather than content: the theme switch in the bar, and anything else
-   that is about the page rather than about the TV. Sized down and unbordered
-   until it is the current thing, so it does not read as an action. */
 .btn-quiet {
   min-height: 34px;
   padding: 0 0.625rem;
@@ -912,8 +585,6 @@ p { margin: 0; }
   font-size: var(--micro);
 }
 
-/* The one loud thing on a screen, and only ever one at a time. Aqua rather
-   than steel: it has to be distinguishable from focus, which is also blue. */
 .btn-signal {
   border-color: rgb(184 241 255 / 62%);
   color: var(--signal-ink);
@@ -927,21 +598,11 @@ p { margin: 0; }
 .btn-wide  { width: 100%; }
 .btn-start { justify-self: start; }
 
-/* Size belongs to the place, not to the paint.
-
-   `.btn-ghost` used to carry both — the quiet treatment and the 40px a
-   control in a list wants — so the first lit button to appear in one, an
-   `update` beside a column of `install`s, stood eight pixels taller than its
-   neighbours and made the row it was in look broken. A row is a column of
-   controls that have to line up whatever any of them is saying. */
 .list .row .btn {
   min-height: 40px;
   padding: 0 0.875rem;
 }
 
-/* Focused, a signal button gets brighter rather than turning steel — it is
-   already the loud one, and swapping its hue would read as a different
-   button rather than as the same one lit. */
 .btn-signal:hover:not(:disabled),
 .btn-signal:focus:not(:disabled),
 .btn-signal.is-focus:not(:disabled) {
@@ -953,8 +614,6 @@ p { margin: 0; }
     inset 0 1px 0 rgb(255 255 255 / 85%);
 }
 
-/* A field is the inverse of a button: pressed into the pane rather than
-   raised off it, so the light falls on its top inside edge. */
 .field {
   width: 100%;
   min-height: 48px;
@@ -981,21 +640,14 @@ p { margin: 0; }
     0 0 0 2px var(--focus-halo);
 }
 
-/* Anything focusable that is not a button or a field still has to show it.
-   Chromium 76 keeps this ring for the pointer as well, since it drops the
-   :focus-visible rule below — which is the safe way to be wrong. */
 :--control:focus,
 .is-focus {
   outline: 2px solid var(--signal);
   outline-offset: 2px;
 }
 
-/* Newer engines only: hides the ring for pointer input while keeping it for
-   the keyboard and the remote. */
 :--control:focus:not(:focus-visible) { outline: none; }
 
-/* The buttons and fields above draw their own focus, so the generic ring
-   would double it. */
 .btn:focus, .field:focus, .btn.is-focus, .field.is-focus { outline: none; }
 
 .toggle {
@@ -1013,16 +665,6 @@ p { margin: 0; }
   }
 }
 
-/* A row that is itself the control — a directory listing, where the whole
-   line is the target. The button chrome is stripped and the divider put
-   back, so it sits in a list beside ordinary rows without announcing
-   itself. Focused, it fills the way a button does.
-
-   And a filled row needs room inside it. `.row` carries no horizontal padding
-   because an ordinary row has no edge of its own to sit away from — but this
-   one grows a lit background the moment it is focused, and with the text hard
-   against that background's rounded corner the row reads as clipped rather
-   than as filled. The padding is the fill's margin, not the text's. */
 .row-button {
   width: 100%;
   padding-left: 0.625rem;
@@ -1048,8 +690,6 @@ p { margin: 0; }
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 30%), 0 0 0 1px var(--focus-halo);
 }
 
-/* A file well. Dashed, because the whole point is that it accepts something
-   dropped onto it. */
 .drop {
   display: grid;
   justify-items: center;
@@ -1063,29 +703,15 @@ p { margin: 0; }
   cursor: pointer;
 }
 
-/* With something in it the well stops being an invitation and becomes a
-   description of one package — which reads left, in line with every other row
-   on this page, rather than centred. */
 .drop-filled {
   justify-items: stretch;
   text-align: left;
 }
 
-/* ── Tabs ────────────────────────────────────────────────────────────────
-   Lowercase monospace, like channel labels on a device. The selected one is
-   lit with the same steel the buttons use, so "current" and "focused" are
-   visibly the same family of state. */
-
 .tabs {
-  display: flex;                     /* scrolls; spacing is on the items */
+  display: flex;
   overflow-x: auto;
 
-  /* Setting overflow on one axis makes the other one `auto` too — that is
-     the specified behaviour, not a quirk — so this strip clips on all four
-     sides whether or not it was asked to. The padding is the room the pills'
-     halos and drop shadows live in; the matching negative margin takes that
-     room back out of the layout, so the pills still line up with the panes
-     above and below rather than being indented by their own bleed. */
   margin: -0.5rem;
   padding: 0.5rem;
   scrollbar-width: none;
@@ -1122,8 +748,6 @@ p { margin: 0; }
   box-shadow: 0 0 0 2px var(--focus-halo);
 }
 
-/* The current tab is lit with exactly what a focused button is lit with —
-   same fill, same meaning. */
 .tab[aria-selected="true"] {
   color: #ffffff;
   border-color: rgb(255 255 255 / 45%);
@@ -1131,12 +755,6 @@ p { margin: 0; }
   background-image: var(--fill-lit);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 50%), 0 0.2rem 0.5rem rgb(0 0 0 / 40%);
 }
-
-/* ── The pairing code ────────────────────────────────────────────────────
-   Six digits typed from across a room, so they are set the way a code is
-   actually printed on something you hold: one character per cell, cells
-   pressed into the glass, and a wider gap after the third so the eye reads
-   two groups of three rather than a six-digit number. */
 
 .code {
   display: grid;
@@ -1164,23 +782,14 @@ p { margin: 0; }
   color: var(--signal);
   text-shadow: 0 0 0.5em rgb(127 227 255 / 55%);
 
-  /* The break a printed code always has. */
   &:nth-child(3) { margin-right: 0.34em; }
 }
 
-/* Waiting for the service: the cells are already there, just empty. */
 .digit-blank {
   color: var(--faint);
   text-shadow: none;
 }
 
-/* The phone's half of the same object: the same six cells, but drawn under
-   a text field rather than around six elements.
-
-   `1ch` is the advance of a digit in whatever monospace face the phone ends
-   up using, so a cell of two — one for the character, one for the space
-   after it — stays aligned to the grid painted behind it no matter which
-   font wins. The half-cell indent centres each digit in its box. */
 .code-field {
   --cell: 2ch;
   --code-pad: 0.75rem;
@@ -1210,11 +819,6 @@ p { margin: 0; }
   }
 }
 
-/* ── Readouts ────────────────────────────────────────────────────────────
-   The address is the other thing read from across the room. It is set at
-   half the code's size deliberately: it is four times as long, and it is
-   typed once where the code is typed on every restart. */
-
 .readout {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
@@ -1227,8 +831,6 @@ p { margin: 0; }
   word-break: break-all;
 }
 
-/* Progress, drawn the way the channel drew it: a pressed channel with a lit
-   bar in it, rather than a hairline rule. */
 .meter {
   height: 0.5rem;
   border: 1px solid var(--inset-edge);
@@ -1236,9 +838,6 @@ p { margin: 0; }
   background-color: var(--inset);
   box-shadow: inset 0 2px 4px rgb(0 0 0 / 60%);
 
-  /* The bar carries its own radius, so the track does not have to clip it —
-     and not clipping is what lets the bar's glow spill past the track, which
-     is the whole reason it reads as lit rather than filled. */
   & > i {
     display: block;
     height: 100%;
@@ -1270,16 +869,6 @@ p { margin: 0; }
   box-shadow: inset 0 2px 6px rgb(0 0 0 / 55%);
 }
 
-/* ── The television ──────────────────────────────────────────────────────
-   A different room and a different distance: three metres, not thirty
-   centimetres. Nothing on this page is sized in rem.
-
-   Viewport units rather than a fixed pixel scale. Samsung hands every TV web
-   app a 1920×1080 surface with a device pixel ratio of 1 — measured on this
-   hardware, and the same on a 4K set — but that is the platform's promise,
-   not a number to hard-code against. A fraction of the surface is right on
-   any of them; 17px is right on none. */
-
 .tv {
   --micro:  1.05vw;
   --label:  1.3vw;
@@ -1289,17 +878,11 @@ p { margin: 0; }
   --radius: 0.4vw;
   --radius-pane: 0.6vw;
 
-  /* The composition, held here rather than on .screen because the screens
-     that cover it — the log console and the credits — are laid out to the
-     same margins and have to sit exactly where it sat. A pane that moved by
-     a few pixels as it opened would read as the whole page jumping.
-
-     The margins are overscan insurance as much as composition: a television
-     may crop several percent off every edge and never mention it. */
-  --lane:      3vh;    /* between the bands                                */
+  /* Held here rather than on .screen: a television may crop several percent off every edge. */
+  --lane:      3vh;
   --margin-y:  5.5vh;
   --margin-x:  6vw;
-  --stamp:     1.4vw;  /* the timestamp column in the log                  */
+  --stamp:     1.4vw;
 
   height: 100vh;
   overflow: hidden;
@@ -1311,9 +894,6 @@ p { margin: 0; }
   border-left-width: 0.3vw;
 }
 
-/* A remote has no pointer, so a target's size no longer has to clear a
-   thumb — but the focused one has to be unmistakable from the sofa. The
-   halo grows accordingly. */
 .tv .btn {
   min-height: 5.2vh;
   padding: 0 1.6vw;
@@ -1330,13 +910,9 @@ p { margin: 0; }
 }
 
 .screen {
-  /* Every measurement on this page is a fraction of the screen it is shown
-     on, and they are named so the preview harness can restate them in
-     pixels for a scaled-down box. The three below belong to this screen
-     alone; the margins it shares with the overlays are set on .tv. */
-  --column:    5vw;    /* between the address and the code                 */
+  --column:    5vw;
   --code-size: 4.6vw;
-  --url-size:  2.2vw;  /* half the code: typed once, and it is longer      */
+  --url-size:  2.2vw;
 
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1346,9 +922,6 @@ p { margin: 0; }
   padding: var(--margin-y) var(--margin-x);
 }
 
-/* The two readouts, side by side. The code takes exactly the width it needs
-   and the address gets the rest — the other way round and a long address
-   pushes the code off the screen. */
 .marquee {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1356,23 +929,11 @@ p { margin: 0; }
   padding: 2.4vh 2.2vw;
 }
 
-/* Both labels on the top line, both readouts on the bottom one. The two
-   blocks are nowhere near the same height, and letting each sit wherever
-   its own content puts it reads as a misalignment rather than a
-   composition. */
 .marquee > .stack {
   grid-template-rows: auto 1fr;
   align-items: end;
 }
 
-/* dmesg's three columns — when, which part of the system, and what happened —
-   as three tracks shared by every line in the log rather than three columns
-   redrawn per line. See `line` in views/television.js.
-
-   The first two tracks are `auto`, which is the rule the columns actually
-   want: they take what they need and the message takes the rest, so a
-   timestamp that grows past a thousand seconds moves every message across by
-   the same amount rather than only its own. */
 .feed {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);
@@ -1382,25 +943,15 @@ p { margin: 0; }
   overflow: hidden;
 }
 
-/* The elapsed time, which is scaffolding for the line beside it rather than
-   part of the message. */
 .stamp {
   color: var(--faint);
   font-variant-numeric: tabular-nums;
 }
 
-/* Which part of the service is talking. Nothing sets its width: it is a track
-   in the feed's own grid, so it is exactly as wide as the widest facility on
-   screen and no wider — and the messages beside it all begin in the same
-   place because they are in the same column, not because a number was
-   guessed for them. */
 .facility {
   color: var(--dim);
 }
 
-/* The remote's own legend, along the foot of the screen — the one place a
-   TV app can say which button does what without stealing room from the
-   content. */
 .legend {
   display: grid;
   grid-auto-flow: column;
@@ -1423,7 +974,6 @@ p { margin: 0; }
   gap: 0.6vw;
 }
 
-/* The key cap itself, drawn like the button it names. */
 .key {
   display: grid;
   place-items: center;
@@ -1438,7 +988,6 @@ p { margin: 0; }
   font-weight: 700;
 }
 
-/* The row of controls the remote actually lands on. */
 .deck {
   display: grid;
   grid-auto-flow: column;
@@ -1447,26 +996,8 @@ p { margin: 0; }
   gap: 1.2vw;
 }
 
-/* ── Over the screen ─────────────────────────────────────────────────────
-   The log console and the credits: the two things here that are read rather
-   than glanced at, and the two that are longer than one screen.
-
-   Both take the television over completely, and the rule below is what takes
-   the channel away rather than merely painting over it. That distinction
-   matters more than it looks. core/remote.js decides what the direction keys
-   can reach by walking the document for elements that are laid out, so a deck
-   left underneath an opaque pane is still five buttons the remote will
-   happily move focus onto, invisibly, while the person pressing the key sees
-   nothing move. `display: none` is the one treatment that removes a thing
-   from the layout and from the remote in the same stroke.
-
-   The selector reads backwards, and the markup is ordered for it: `#overlay`
-   is written *before* `.screen` in tv.html so this can select forwards from
-   it. It is the only rule in this file that depends on document order, which
-   is why both ends carry a comment — and why views/television.js renders an
-   empty deck as well, so the interface still behaves if the rule is ever
-   dropped. */
-
+/* `display: none` rather than an opaque pane: core/remote.js walks what is laid out, so a deck
+   left underneath would still take focus invisibly. tv.html writes #overlay before .screen for this. */
 #overlay:not(:empty) + .screen { display: none; }
 
 .curtain {
@@ -1479,33 +1010,18 @@ p { margin: 0; }
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 
-  /* The row is named, and that is not tidiness.
-     
-     An auto row sizes to its content, and the pane inside it asks for
-     `height: 100%` — which resolves against the row, which is sized by the
-     pane. A cycle, and a browser resolves it by letting the content win: put
-     more rows in the log and the pane grows past the bottom of the screen,
-     taking its own footer with it. Naming the row as a fraction of the
-     curtain makes the height definite before anything inside is measured, so
-     `minmax(0, 1fr)` on the pane's own rows can do its job and clip the log
-     rather than being pushed by it. */
+  /* An auto row sized by a pane that asks for `height: 100%` is a cycle the content wins. */
   grid-template-rows: minmax(0, 1fr);
 
   padding: var(--margin-y) var(--margin-x);
 }
 
-/* A dialog rather than a screen: the water is dimmed and the pane takes only
-   the middle of it. The dim is what says the channel is still behind this,
-   which is the whole difference between a popup and a page. */
 .curtain-dim {
   justify-items: center;
   align-items: center;
   background-color: rgb(2 12 17 / 55%);
 }
 
-/* Three bands: what this is, the rows, and the legend. The rows take
-   whatever is left, which is what makes the window a fixed number of them —
-   see ROWS in views/television.js. */
 .console, .dialog {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1521,27 +1037,15 @@ p { margin: 0; }
   height: 88%;
 }
 
-/* The header: what this screen is, where in it you are, and the way out. */
 .bar-overlay {
   grid-template-columns: minmax(0, 1fr) auto auto;
   padding-top: 0;
 
-  /* Chrome rather than content, and it must not read as the action on a
-     screen whose real controls are the direction keys. */
   & .btn {
     min-height: 4vh;
     font-size: var(--micro);
 
-    /* And it does not animate, which is not a style choice.
-       
-       This header counts what is on screen, so every press of a direction key
-       changes it and core/view.js rewrites the whole pane — which destroys
-       this button and builds an identical one. The replacement starts life
-       unfocused, and core/remote.js lights it in the same breath; with a
-       140ms cross-fade on colour and fill, that hand-off is a visible flicker
-       to dim and back on every single keypress. Nothing is lost by removing
-       it: a remote moves focus in steps, and the channel's own buttons
-       changed state instantly. */
+    /* This header is rewritten on every keypress, so a cross-fade flickers on the hand-off. */
     transition: none;
   }
 }
@@ -1555,10 +1059,7 @@ p { margin: 0; }
   overflow: hidden;
 }
 
-/* One credit: the work on the left, where it lives on the right. Every row
-   is one line high — including the headings and the notes between them —
-   which is what lets the window above be a count of rows rather than a
-   measurement. */
+/* Every row is one line high, which is what lets views/television.js count rows. */
 .credit {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1575,11 +1076,6 @@ p { margin: 0; }
 .credit-note {
   grid-template-columns: minmax(0, 1fr);
 }
-
-/* ── Motion ──────────────────────────────────────────────────────────────
-   The bubbles are the one thing on screen that moves on its own, and
-   scene/bubbles.js reads this same preference and stops drawing entirely
-   rather than merely slowing down. */
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

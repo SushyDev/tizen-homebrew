@@ -1,16 +1,6 @@
 'use strict';
 
-// Promisified wrapper around the TV's own SDB daemon.
-//
-// Enabling Developer Mode starts sdbd on port 26101, and it accepts
-// connections only from the IP configured as the developer host. When that is
-// set to 127.0.0.1 the TV accepts connections from itself, so this service can
-// drive installs with no external machine involved.
-//
-// The reference implementation (TizenBrewInstaller index.js:69) leaked
-// listeners between attempts, resolved off a bare 1s timer, and could settle
-// its promise more than once. Every connection here owns its listeners and
-// every operation has a real deadline.
+// sdbd accepts connections only from the configured developer host — 127.0.0.1, so the TV reaches itself.
 
 const adb = require('./adb.js');
 
@@ -18,7 +8,6 @@ const SDB_PORT = 26101;
 const DEFAULT_CONNECT_TIMEOUT = 8000;
 const DEFAULT_EXEC_TIMEOUT = 120000;
 
-// sysinfo: replies with fixed-width 64-byte fields.
 const INFOBUF_MAXLEN = 64;
 const SYSINFO_PLATFORM_VERSION_FIELD = 3;
 
@@ -33,16 +22,8 @@ function Session(client) {
     this._client = client;
     this._closed = false;
 
-    // Nothing listens to the socket once `connect` has handed it over: its
-    // listeners are removed when the promise settles, deliberately, so they
-    // cannot fire twice. That leaves an unhandled 'error' event for anything
-    // that goes wrong afterwards — and in Node an unhandled 'error' is not a
-    // rejected promise, it is the process exiting with a stack trace.
-    //
-    // sdbd resets connections in ordinary use: a second client arriving, a
-    // television going to sleep mid-upload. Recording it here keeps that a
-    // failed command rather than a crash; whatever is in flight then ends on
-    // its own deadline, which every operation has.
+    // Listeners go when the promise settles, so a later socket error would be unhandled — which in Node
+    // is the process exiting. sdbd resets connections in ordinary use.
     const socket = client && client._socket;
 
     if (socket) {
@@ -50,18 +31,11 @@ function Session(client) {
     }
 }
 
-// Runs a command and collects its output.
-//
-// `until` lets a caller finish as soon as the output proves the command
-// succeeded. Several Samsung shell commands (notably vd_appinstall) keep the
-// stream open after they are done, so waiting for 'end' would always hit the
-// timeout.
+// `until` finishes as soon as the output proves it worked: vd_appinstall keeps its stream open.
 Session.prototype.exec = function (command, options) {
     const opts = options || {};
     const timeout = opts.timeout || DEFAULT_EXEC_TIMEOUT;
     const until = opts.until;
-    // Called with each chunk as it arrives, so a caller can stream output
-    // instead of waiting for the command to finish.
     const onChunk = opts.onData;
     const self = this;
 
@@ -99,7 +73,6 @@ Session.prototype.exec = function (command, options) {
             const text = chunk.toString();
             output += text;
             if (onChunk) {
-                // A throwing consumer must not tear down the command.
                 try { onChunk(text); } catch (e) { /* ignore */ }
             }
             if (until && until(output)) finish(null, output);
@@ -109,8 +82,6 @@ Session.prototype.exec = function (command, options) {
             finish(SdbError('sdbStreamError', `SDB stream error: ${e}`), null);
         }
 
-        // A socket that died before this command was issued would otherwise
-        // only show up as a timeout, seconds later, saying nothing useful.
         if (self._socketError) {
             return finish(SdbError('sdbClosed', `SDB connection was lost: ${self._socketError.message}`), null);
         }
@@ -126,7 +97,6 @@ Session.prototype.exec = function (command, options) {
     });
 };
 
-// Reads the platform version out of the fixed-width sysinfo: response.
 Session.prototype.platformVersion = function () {
     return new Promise((resolve, reject) => {
         let stream;
@@ -158,12 +128,7 @@ Session.prototype.platformVersion = function () {
     });
 };
 
-// The DUID identifies this specific TV; Samsung binds minted certificates to
-// it, so resigning cannot proceed without it.
-//
-// `webapis.productinfo.getDuid()` looks like a free local answer and is a
-// different number: CPCLIM2YRW7DO here against PC3JB2FQOGHRT there. This is the
-// one certificates are minted against.
+// `webapis.productinfo.getDuid()` is a different number; this is the one certificates are minted against.
 Session.prototype.getDuid = function () {
     return this.exec('shell:0 getduid', { timeout: 10000, until: (o) => o.trim().length > 0 })
         .then((out) => out.trim());
@@ -223,13 +188,7 @@ function connect(options) {
             finish(null, new Session(client));
         }
 
-        // What actually happened comes first, in the words the socket used.
-        // A cause is offered after it and phrased as something that produces
-        // this symptom, never as a finding: "the developer host IP is probably
-        // not 127.0.0.1" was printed at somebody who had set it to 127.0.0.1,
-        // eleven times in three minutes, because sdbd on these sets also drops
-        // connections for reasons of its own. The remedy was right often
-        // enough to be believed and wrong often enough to cost an evening.
+        // What happened first, in the socket's own words; a cause after it, and only as a possibility.
         function onError(e) {
             const code = (e && e.code) || 'unknown';
 
@@ -257,18 +216,13 @@ function connect(options) {
                 'intermittently to one whose address is.'), null);
         }
 
-        // Resolve on the ADB handshake, not the TCP connect. sdbd accepts the
-        // socket from any address and only then resets it if the developer
-        // host IP does not match, so resolving on the socket's own 'connect'
-        // reports success against a TV that is about to reject us — and the
-        // real failure then surfaces later, somewhere misleading.
+        // Resolve on the ADB handshake: sdbd accepts the socket first and resets it on a host mismatch.
         client.on('connect', onConnect);
         stream.on('error', onError);
         stream.on('close', onClose);
     });
 }
 
-// Runs `fn` against a fresh session and always tears it down afterwards.
 function withSession(options, fn) {
     return connect(options).then((session) => {
         return Promise.resolve()

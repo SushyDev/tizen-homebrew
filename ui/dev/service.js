@@ -1,41 +1,14 @@
-// A television, for people who do not have one to hand.
-//
-// The pages this repo ships are useless in a browser without a service behind
-// them: the phone UI shows a PIN box and nothing else until something answers
-// the socket, and the TV screen sits on "starting background service" forever.
-// That made the design impossible to *look at* without a Samsung TV on the
-// desk, which is the reason the first version of it shipped badly.
-//
-// So with no `HOMEBREW_TV` set, this answers instead. It speaks the real
-// protocol over a real WebSocket — `src/core/socket.js` runs unmodified
-// against it, reconnects and all — and it walks an install through its five
-// phases on a timer so the progress states can actually be watched.
-//
-// It is a Vite plugin and it is `apply: 'serve'`. None of it can reach a
-// build.
+// A stand-in television for a browser: it speaks the real protocol over a real WebSocket, so the pages can be
+// looked at without hardware.
 
 import { createHash } from 'crypto';
 
-// The real table of what a television says about a package it will not
-// install. A stand-in that invented its own failures would be exactly the
-// wrong kind of mock: the shape the UI has to render — code, verdict, remedy —
-// is the thing being looked at here, so it comes from the same place the
-// service gets it.
+// The real verdict table, so the failure shapes the UI renders come from the same place the service gets them.
 import verdicts from '../../service/src/install/verdicts.js';
 
-// The pairing code the fake TV is showing. Fixed rather than random, because
-// the point is to get to the interface quickly and often.
 const PIN = '386588';
 
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
-
-// ── The log ──────────────────────────────────────────────────────────────
-//
-// The TV screen's console is fed by `GET /logs`, so a stand-in that answers it
-// with an empty list makes the one screen this repo added last impossible to
-// look at without a television. This keeps the real service's record shape —
-// `{ seq, t, at, level, facility, text }` — and writes the same lines it
-// would: a boot sequence at startup, then whatever the browser actually does.
 
 const startedAt = Date.now();
 const lines = [];
@@ -59,8 +32,6 @@ const log = ['debug', 'info', 'ok', 'warn', 'err'].reduce((writers, level) => ({
     [level]: (facility, text) => write(level, facility, text)
 }), {});
 
-// What a real service says between being started and being ready. The timings
-// are not padded: this is what one of these logs looks like.
 const boot = () => {
     log.info('svc', 'tizen homebrew dev starting');
     log.info('svc', `node ${process.version} on ${process.platform}/${process.arch}, pid ${process.pid}`);
@@ -76,8 +47,6 @@ const boot = () => {
     log.info('cat', '4 apps from the cache, 41m old');
 };
 
-// ── The device, and what it has to offer ─────────────────────────────────
-
 const DEVICE = {
     onTv: true,
     ready: true,
@@ -87,17 +56,7 @@ const DEVICE = {
     hasCertificates: true
 };
 
-// ── What the apps look like ──────────────────────────────────────────────
-//
-// Real artwork comes from two places — a catalogue app's logo.png in its own
-// repository, and the icon inside a package the service opened. Neither is
-// reachable here: there is no repository to fetch from and no .wgt on disk to
-// unzip. So these are drawn instead, as a gradient with a letter on it, which
-// is enough to answer the only question the harness is for — does a list of
-// tiles hold together, and does the artwork sit in its frame properly.
-//
-// Base64 rather than a raw SVG data URI: the markup contains `#` in every
-// colour, and a `#` in a URI starts a fragment.
+// Drawn rather than fetched, and base64 because the markup contains `#` in every colour.
 const artwork = (letter, top, bottom) => `data:image/svg+xml;base64,${Buffer.from(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
     '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">' +
@@ -108,18 +67,8 @@ const artwork = (letter, top, bottom) => `data:image/svg+xml;base64,${Buffer.fro
     `font-size="36" font-family="Helvetica,Arial,sans-serif">${letter}</text></svg>`
 ).toString('base64')}`;
 
-// Four rows, and between them every state the app list can be in: an app
-// with an update waiting, an app that is here and current, an app that is
-// not here at all, and a `url` app with nothing to ask about.
-//
-// `installed` is on them from the start, because the real service reads that
-// off the television's own package list and it costs nothing. `available` is
-// not: it is a request to GitHub each — see install/updates.js — and it does
-// not arrive until somebody presses check.
 const CATALOG = [
     {
-        // The channel itself, which is in its own catalogue so a television
-        // can carry its own next version to itself.
         id: 'homebrew',
         name: 'Tizen Homebrew',
         description: 'This app. Updates itself.',
@@ -144,10 +93,8 @@ const CATALOG = [
         source: { type: 'github', ref: 'jellyfin/jellyfin-tizen' }
     },
     {
-        // Deliberately without artwork. A catalogue logo is guessed rather
-        // than declared — logo.png in the app's own repository — so an app
-        // that has none is the ordinary case, and the row that falls back to
-        // a monogram needs looking at as much as the ones that do not.
+        // Deliberately without artwork: a catalogue logo is guessed rather than declared, so a monogram row is
+        // the ordinary case.
         id: 'kodi',
         name: 'Kodi',
         version: '21.0',
@@ -156,19 +103,13 @@ const CATALOG = [
     }
 ];
 
-// What this fake television is holding: the channel, one version behind, and
-// YouTube at the version its repository is already at.
 const INSTALLED = { GJBBYNLkgP: '0.1.0', tUb3Xq7Lm9: '0.1.0' };
 
-// And what those repositories would answer, once anybody asks them.
 const RELEASED = { 'SushyDev/tizen-homebrew': '0.2.0', 'SushyDev/tube': '0.1.0' };
 
-/** The catalogue as the service sends it: installed marked, versions not. */
 const listed = (checked) => CATALOG.map((app) => {
     const installed = INSTALLED[app.packageId] || null;
 
-    // A url app has nowhere to ask, so what the catalogue declares is the
-    // answer and it is as checked as it will ever be.
     const asked = app.source.type !== 'github' || checked.indexOf(app.id) !== -1;
     const available = app.source.type === 'github' ? RELEASED[app.source.ref] || null : app.version || null;
 
@@ -182,9 +123,6 @@ const listed = (checked) => CATALOG.map((app) => {
     };
 });
 
-// What the service reads out of a package sitting on the television's own
-// disk — see install/preview.js. The filenames below are what a browser would
-// have called the download; the identity is what the archive actually says.
 const PACKAGES = {
     '/media/usb1/YouTube.wgt': {
         packageId: 'tUb3Xq7Lm9', appId: 'tUb3Xq7Lm9.Tube', name: 'YouTube',
@@ -194,7 +132,6 @@ const PACKAGES = {
         packageId: 'AprZAcqzcc', appId: 'AprZAcqzcc.Jellyfin', name: 'Jellyfin',
         version: '10.9.1', isWgt: true, icon: artwork('J', '#aa5cd6', '#00a4dc')
     },
-    // A package with no icon in it at all, which is legal and happens.
     '/media/usb1/downloads/TizenHomebrew.wgt': {
         packageId: 'GJBBYNLkgP', appId: 'GJBBYNLkgP.TizenHomebrew', name: 'Tizen Homebrew',
         version: '0.1.0', isWgt: true, icon: null
@@ -221,9 +158,6 @@ const DIRECTORY = {
     ]
 };
 
-// The install pipeline, at a speed a person can watch. The real one is
-// dominated by the download and the copy, which is why those two are given
-// most of the time here.
 const PHASES = [
     ['probing', null, 500],
     ['fetching', '2.4MB', 1600],
@@ -232,18 +166,8 @@ const PHASES = [
     ['installing', null, 1100]
 ];
 
-// ── WebSocket, from the handshake up ─────────────────────────────────────
-//
-// About seventy lines, and worth every one of them: the alternative is a fake
-// transport inside the page, which would leave `core/socket.js` — the file
-// most likely to be wrong — the one file never exercised in development.
-//
-// Only what this needs is implemented: text frames out, text frames in, and a
-// close. No fragmentation, no compression, no ping.
-
 const accept = (key) => createHash('sha1').update(key + GUID).digest('base64');
 
-/** Wraps a string as a single unfragmented text frame. */
 const frame = (text) => {
     const payload = Buffer.from(text, 'utf8');
     const length = payload.length;
@@ -258,13 +182,6 @@ const frame = (text) => {
     return Buffer.concat([header, payload]);
 };
 
-/**
- * Pulls whole frames out of a buffer.
- *
- * Returns the messages it could complete and whatever bytes are left over, so
- * the caller can hand them back with the next chunk — a message split across
- * two TCP reads is the normal case, not an edge one.
- */
 const unframe = (buffer) => {
     const messages = [];
     let offset = 0;
@@ -304,21 +221,16 @@ const unframe = (buffer) => {
     return { messages, rest: buffer.slice(offset), closed: false };
 };
 
-// ── The conversation ─────────────────────────────────────────────────────
-
 const conversation = (socket, say) => {
     let paired = false;
     let relayEnabled = false;
 
-    // Which rows somebody has asked about. Empty to begin with, which is the
-    // state the app list opens in on a real television too.
     let checked = [];
 
     const send = (type, payload) => socket.write(frame(JSON.stringify({ type, payload })));
 
     const fail = (code, message, remedy) => send('error', { code, message, remedy: remedy || null, fatal: false });
 
-    /** Walks one install through its phases, then succeeds or refuses. */
     const install = async ({ source, ref }) => {
         const began = Date.now();
 
@@ -332,8 +244,6 @@ const conversation = (socket, say) => {
                 log.info('pkg', 'release v0.1.4 carries tube.wgt (2.41 MB)');
                 log.ok('pkg', 'got tube.wgt: 2.41 MB in 1.60s (1.51 MB/s)');
                 log.info('pkg', 'sha256 3f2a91c0d84b17e6…');
-                // The manifest is read the moment the bytes are in hand, which
-                // is what the next phase has an identity to send.
                 log.info('pkg', 'identified Tube 0.1.0 (tUb3Xq7Lm9, app tUb3Xq7Lm9.Tube, wgt)');
             },
             resigning: () => log.info('pkg', 'tizen 7 or newer — re-signing against this TV\'s own certificates'),
@@ -341,13 +251,7 @@ const conversation = (socket, say) => {
             installing: () => log.info('sdb', 'shell:0 vd_appinstall tUb3Xq7Lm9 /home/owner/share/tmp/sdk_tools/package.wgt')
         };
 
-        // What the package turned out to be. The real pipeline learns this the
-        // moment the bytes are in hand and sends it with the re-signing phase
-        // — see install/pipeline.js — and the card that renders it is one of
-        // the screens this stand-in exists to make visible.
         const identity = PACKAGES[ref] || (() => {
-            // The marked list, so the version is the one the phone is
-            // showing by the time anything can be pressed.
             const entry = listed(checked).filter((app) => app.id === ref)[0];
 
             return entry
@@ -364,10 +268,8 @@ const conversation = (socket, say) => {
         })();
 
         for (const [phase, detail, wait] of PHASES) {
-            // What the package turned out to be goes with the re-signing
-            // phase, the first one after the download — see the real
-            // pipeline, which names the application in that phase's detail
-            // rather than repeating the reference somebody typed.
+            // The real pipeline names the application in the re-signing phase rather than repeating the typed
+            // reference.
             const announcing = phase === 'resigning';
 
             send('progress', {
@@ -380,10 +282,6 @@ const conversation = (socket, say) => {
             await new Promise((resolve) => setTimeout(resolve, wait));
         }
 
-        // One source always refuses, because the failure states need looking
-        // at as much as the happy one does. An author mismatch, specifically:
-        // it is the refusal people actually hit, and the only one with all
-        // three lines to render.
         if (String(ref).indexOf('fail') !== -1) {
             const refused = verdicts.failureIn(
                 'app_id[tUb3Xq7Lm9] install failed[118, -11], reason: Author certificate not match :',
@@ -423,8 +321,6 @@ const conversation = (socket, say) => {
 
         const output = answers[command.trim()] || `sh: ${command.trim()}: not found\n`;
 
-        // Streamed a line at a time, because the real one is and the UI has
-        // to look right while it arrives.
         for (const line of output.split('\n').filter(Boolean)) {
             send('relayData', { id, chunk: `${line}\n` });
             await new Promise((resolve) => setTimeout(resolve, 90));
@@ -450,12 +346,8 @@ const conversation = (socket, say) => {
         },
 
         getState: () => send('state', DEVICE),
-        // Free: what is installed is a local question on a real set, so the
-        // list arrives at once with that much on it and nothing else.
         getCatalog: () => send('catalog', { entries: listed(checked), stale: false }),
 
-        // Not free: one request to GitHub per app, which is why it waits to
-        // be asked and why the delay below is not padding.
         checkUpdates: async ({ id }) => {
             const asking = CATALOG.filter((app) => app.source.type === 'github' && (!id || app.id === id));
 
@@ -463,7 +355,6 @@ const conversation = (socket, say) => {
 
             log.info('cat', `checking ${asking.length === 1 ? asking[0].name : `${asking.length} apps`} for a newer release`);
 
-            // Three at a time, as the real one does.
             await new Promise((resolve) => setTimeout(resolve, 400 * Math.ceil(asking.length / 3)));
 
             asking.forEach((app) => {
@@ -495,7 +386,6 @@ const conversation = (socket, say) => {
             : fail('relayDisabled', 'The command relay is turned off.'))
     };
 
-    // The service greets every connection by asking for a PIN.
     send('hello', { ok: false, needsPin: true });
 
     return async (raw) => {
@@ -521,28 +411,19 @@ const conversation = (socket, say) => {
     };
 };
 
-// ── The plugin ───────────────────────────────────────────────────────────
-
 const ROUTES = {
     '/pin': () => ({ pin: PIN, port: 8091, addresses: ['192.168.2.9'], url: 'http://192.168.2.9:8091' }),
     '/state': () => DEVICE,
     '/health': () => ({ ok: true, port: 8091, onTv: true, addresses: ['192.168.2.9'] }),
     '/version': () => ({ build: 'dev', node: process.version, startedAt: new Date().toISOString(), uptimeSeconds: 1 }),
     '/packages': () => ({ ok: true, packages: Object.keys(INSTALLED).map((id) => ({ id, version: INSTALLED[id] })) }),
-    // `uptime` comes with the lines because the page stamps its own events on
-    // this service's clock — see the note on /logs in the real one.
     '/logs': (query) => ({
         lines: lines.filter((line) => line.seq > (Number(query.get('since')) || 0)),
         uptime: Date.now() - startedAt
     })
 };
 
-/**
- * Serves a stand-in for the on-TV service.
- *
- * `enabled` is false whenever HOMEBREW_TV names a real device, in which case
- * Vite proxies to it instead and none of this is installed.
- */
+// `enabled` is false whenever HOMEBREW_TV names a real device, in which case Vite proxies to it instead.
 const devService = ({ enabled }) => ({
     name: 'tizen-homebrew-dev-service',
     apply: 'serve',
@@ -563,8 +444,7 @@ const devService = ({ enabled }) => ({
             response.end(JSON.stringify(route(new URLSearchParams(request.url.split('?')[1] || ''))));
         });
 
-        // Vite's own HMR socket lives on the same server, so only /socket is
-        // claimed here and everything else is left alone.
+        // Vite's own HMR socket lives on the same server, so only /socket is claimed here.
         server.httpServer.on('upgrade', (request, socket) => {
             if (request.url.split('?')[0] !== '/socket') return;
 

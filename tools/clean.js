@@ -1,8 +1,5 @@
 'use strict';
 
-// Removes every build artefact. Sources and node_modules are left alone;
-// `npm run clean -- --all` also drops node_modules.
-
 const { rmSync, existsSync, statSync } = require('fs');
 const { join } = require('path');
 

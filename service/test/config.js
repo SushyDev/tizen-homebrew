@@ -1,7 +1,5 @@
 'use strict';
 
-// Stored state, and the certificate hand-off a first install now depends on.
-
 const { mkdtempSync, mkdirSync, writeFileSync, existsSync } = require('fs');
 const { dirname } = require('path');
 const { tmpdir } = require('os');
@@ -26,7 +24,6 @@ const drop = (value) => {
 check('nothing to adopt is not an error', config.adoptHandoff() === null, 'a missing hand-off threw');
 
 {
-    // Something already stored that the hand-off must not touch.
     config.update({ catalogUrl: 'https://example.test/catalog.json', lastInstalled: [{ packageId: 'x' }] });
 
     drop({ author: PAIR, distributor: PAIR, devices: ['TESTSET1234', 'OTHERSET0001'] });

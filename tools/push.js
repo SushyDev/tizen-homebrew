@@ -1,17 +1,5 @@
 'use strict';
 
-// Installs a built package straight onto the TV over the LAN.
-//
-//   npm run push -- 192.168.2.9 <pin>
-//
-// This is the normal way to update once the TV is set up. Pinning the
-// developer host IP to 127.0.0.1 is what makes the TV self-sufficient, and it
-// deliberately takes sdb access away from every other machine — so `bootstrap`
-// stops working at exactly the point everything starts working. This pushes to
-// Tizen Homebrew instead, which is still allowed to drive sdb locally.
-//
-// The PIN is shown on the TV screen and changes every time the service starts.
-
 const { readFileSync, readdirSync, existsSync, statSync } = require('fs');
 const { join } = require('path');
 
@@ -21,14 +9,8 @@ const { ROOT } = require('./config.js');
 const WGT = 'release/tizenhomebrew.wgt';
 const MANIFEST = 'config.xml';
 
-// The parts of an app that a build rewrites, as tools/package.js stages them
-// into the .wgt. config.xml and icon.png are packaged from the app directory
-// too, but they are edited by hand rather than generated, so they are not the
-// thing that goes quietly out of date.
 const BUILT = ['ui/dist', 'service/dist'];
 
-// Read from the manifest rather than hardcoded, so renaming a package cannot
-// leave this talking to the wrong app.
 function appId() {
     const match = readFileSync(join(ROOT, MANIFEST), 'utf8')
         .match(/<tizen:application\b[^>]*\bid="([^"]+)"/);
@@ -42,18 +24,15 @@ function friendly(message) {
     return Object.assign(new Error(message), { isFriendly: true });
 }
 
-// The newest mtime anywhere under a directory, or 0 if it is not there.
 function newestUnder(dir) {
     if (!existsSync(dir)) return 0;
 
     return readdirSync(dir, { recursive: true, withFileTypes: true })
         .filter((entry) => entry.isFile())
-        // parentPath is the current name for it; Node 20 before 20.12 has only path.
         .map((entry) => statSync(join(entry.parentPath || entry.path, entry.name)).mtimeMs)
         .reduce((newest, at) => Math.max(newest, at), 0);
 }
 
-// Rounded, because what matters is the size of the gap rather than the number.
 function describeGap(ms) {
     const minutes = Math.round(ms / 60000);
     if (minutes < 1) return 'under a minute';
@@ -65,13 +44,8 @@ function describeGap(ms) {
     return `${Math.round(hours / 24)} days`;
 }
 
-// Warns when the package predates the build output it is supposed to contain.
-//
-// This uploads the .wgt exactly as it sits on disk, and nothing in `build`
-// writes one — only `package` does. So `npm run build && npm run push`
-// installs whatever was packaged last time, and does it silently: the upload
-// succeeds, the TV comes back on a healthy build, and the change is simply not
-// in it. A line here costs nothing next to finding that out from the far end.
+// Nothing in `build` writes a .wgt — only `package` does — so `npm run build && npm run push`
+// silently installs whatever was packaged last time.
 function checkFreshness() {
     const packagedAt = statSync(join(ROOT, WGT)).mtimeMs;
     const newest = BUILT.reduce((at, part) => Math.max(at, newestUnder(join(ROOT, part))), 0);
@@ -104,16 +78,9 @@ async function pushOne(ip, pin, buildBefore) {
                 'x-homebrew-name': 'homebrew'
             },
             body,
-            // Resigning and installing on the TV take a while.
             signal: AbortSignal.timeout(300000)
         });
     } catch (err) {
-        // Installing Tizen Homebrew over itself tears down the very service
-        // handling the request, so the connection drops before a reply
-        // arrives. That looks identical to a failure but is usually success —
-        // the only way to tell is to ask what build is running once it is
-        // back. Reinstalling is not quick, so a minute is the patience this
-        // needs; giving up early reports a successful install as a failure.
         const after = await waitForService(ip, 60);
 
         if (after) {
@@ -123,9 +90,6 @@ async function pushOne(ip, pin, buildBefore) {
             if (after.build !== buildBefore) {
                 ui.ok('homebrew', `${size} · reconnected on ${after.build}`, took);
             } else {
-                // Same stamp is not proof of failure: two builds from one
-                // commit in the same minute are stamped identically. Say
-                // exactly what is known rather than guessing either way.
                 ui.ok('homebrew', `${size} · reconnected, still ${after.build}`, took);
                 ui.warn('the build stamp did not change — commit, or rebuild, to tell them apart');
             }
@@ -133,11 +97,6 @@ async function pushOne(ip, pin, buildBefore) {
             return { appId: appId(), version: after.build, selfRestarted: true };
         }
 
-        // Not necessarily a failed install. The connection drops because the
-        // service is being replaced, and whether the platform brings it back
-        // depends on the app still being foregrounded — so silence here means
-        // "cannot tell", and leading with "could not reach" reads as "did not
-        // install" when the package is usually already on the set.
         throw friendly(
             `Tizen Homebrew at ${ip}:${PORT} did not come back within a minute — ${err.message}\n\n` +
             '  The install has probably finished; the service only runs while the app is\n' +
@@ -154,12 +113,8 @@ async function pushOne(ip, pin, buildBefore) {
     }
 
     if (!res.ok || !result.ok) {
-        // The phases show how far it got, which is usually the useful part.
         const trace = (result.phases || []).map((p) => `      ${p}`).join('\n');
 
-        // And where the television gave a refusal the service recognised, the
-        // sentence saying what to do about it — decided once, on the TV, in
-        // service/src/install/verdicts.js, so this reads the same as the phone.
         const advice = result.remedy
             ? `\n  ${result.remedy.split('\n').join('\n  ')}\n`
             : '';
@@ -181,15 +136,8 @@ function get(ip, path, pin) {
     }).then((res) => (res.ok ? res.json() : null)).catch(() => null);
 }
 
-// Waits for the service to answer at all, and reports what it came back on.
-//
-// Waiting for a *different* build is the tempting version and it is wrong in
-// both directions. Two builds from the same commit inside the same minute
-// carry the same stamp, so a perfectly good install can look like nothing
-// happened; and a reinstall that failed brings the old service back, which
-// looks like nothing happened for a completely different reason. Neither is
-// knowable from here, so this reports the fact — came back, on this build —
-// and lets the caller say what it means.
+// Waiting for a different build stamp is wrong in both directions: two builds from one commit in
+// the same minute are stamped identically, and a failed reinstall brings the old service back.
 async function waitForService(ip, seconds) {
     for (let i = 0; i < (seconds || 60); i++) {
         await new Promise((r) => setTimeout(r, 1000));
@@ -199,10 +147,8 @@ async function waitForService(ip, seconds) {
     return null;
 }
 
-// Tizen Homebrew's service is background-support="enable", so it outlives a
-// reinstall: new code sits on disk while the old process keeps serving. This
-// asks it to exit so the platform brings it back on the new build, then waits
-// for a different build stamp to appear.
+// The service is background-support="enable", so it outlives its own reinstall: new code sits on
+// disk while the old process keeps serving, and it has to be asked to exit.
 async function restartService(ip, pin) {
     try {
         await fetch(`http://${ip}:${PORT}/restart`, {
@@ -214,16 +160,12 @@ async function restartService(ip, pin) {
         // The service exiting can cut the response short; that is success.
     }
 
-    // The TV page relaunches the service when it next polls, and launching the
-    // app does too. Nudge it rather than waiting for a person.
     await fetch(`http://${ip}:8001/api/v2/applications/${appId()}`, { method: 'POST' })
         .catch(() => null);
 
     return waitForService(ip, 60);
 }
 
-// Confirms against the TV's own application registry rather than trusting the
-// reply, the same way the bootstrap does.
 async function confirm(ip, appId) {
     try {
         const res = await fetch(`http://${ip}:8001/api/v2/applications/${appId}`, {
@@ -249,8 +191,6 @@ async function main() {
     ui.heading('push', `${ip}:${PORT}`);
     ui.blank();
 
-    // /version is served by the service being replaced, so this is the build
-    // on its way out.
     const before = await get(ip, '/version');
     if (before && before.build) ui.info('running', before.build);
     ui.blank();
@@ -260,9 +200,6 @@ async function main() {
     const registered = await confirm(ip, result.appId);
     if (!registered) ui.warn('installed, but not in the TV\'s app list yet');
 
-    // The service is background-support="enable", so it outlives its own
-    // reinstall: new code sits on disk while the old process keeps serving.
-    // Unless the install already took it down, it has to be asked to exit.
     if (!result.selfRestarted) {
         ui.blank();
         const after = await restartService(ip, pin);

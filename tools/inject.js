@@ -1,11 +1,7 @@
 'use strict';
 
-// Substitutes build-time tokens into a bundle and proves it worked.
-//
-// A silently unreplaced token produces an app that looks fine and then never
-// reaches its origin, so both directions are checked: every token must be
-// found, and none may survive.
-
+// A silently unreplaced token produces an app that looks fine and never reaches its origin, so
+// both directions are checked: every token must be found, and none may survive.
 function injectTokens(code, tokens) {
     const applied = [];
 
@@ -18,8 +14,6 @@ function injectTokens(code, tokens) {
         }
 
         const before = code;
-        // Tokens appear inside string literals, so a plain global replace is
-        // exactly right; splitting avoids regex escaping entirely.
         code = code.split(token).join(value);
 
         if (code === before) {

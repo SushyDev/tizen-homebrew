@@ -1,15 +1,11 @@
 'use strict';
 
-// End-to-end exercise of the service protocol, run off-TV. Covers the PIN
-// gate, message validation and the install preconditions without needing a TV.
-
 const http = require('http');
 const WebSocket = require('ws');
 
 const PORT = Number(process.env.HOMEBREW_PORT) || 8399;
 process.env.HOMEBREW_PORT = String(PORT);
 
-// Keep the harness away from any real Tizen Homebrew state on this machine.
 const os = require('os');
 const fs = require('fs');
 process.env.HOMEBREW_CONFIG_DIR = fs.mkdtempSync(`${os.tmpdir()}/homebrew-test-`);
@@ -44,7 +40,6 @@ function send(conn, type, payload) {
     conn.socket.send(JSON.stringify({ type, payload: payload || {} }));
 }
 
-// Waits for the next message of a given type to land in the inbox.
 function next(conn, type, timeout) {
     const deadline = Date.now() + (timeout || 4000);
     return new Promise((resolve, reject) => {
@@ -58,7 +53,6 @@ function next(conn, type, timeout) {
     });
 }
 
-// HOMEBREW_ENTRY=dist exercises the packaged bundle instead of the sources.
 require(process.env.HOMEBREW_ENTRY === 'dist' ? '../dist/index.js' : '../src/main.js');
 
 setTimeout(() => {
@@ -82,7 +76,6 @@ setTimeout(() => {
         .then((msg) => {
             check('server asks for a PIN on connect', msg.payload.needsPin === true, JSON.stringify(msg));
 
-            // Anything before pairing must be refused.
             send(conn, 'getState');
             return next(conn, 'error');
         })
@@ -147,8 +140,6 @@ setTimeout(() => {
         .then((msg) => {
             check('unreadable directory is reported', msg.payload.code === 'notFound', JSON.stringify(msg.payload));
 
-            // The regression the reference implementation had: a missing break
-            // meant a file install also wiped the stored certificates.
             const config = require('../src/config.js');
             config.update({ author: 'a', distributor: 'b' });
             send(conn, 'install', { source: 'file', ref: '/nope.wgt' });

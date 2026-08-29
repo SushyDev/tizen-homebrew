@@ -1,56 +1,13 @@
 'use strict';
 
-// Minting a certificate pair for one television.
+// Minting a certificate pair for one television. Point it at an address and it resolves the DUID
+// itself, which is the way round that cannot go wrong.
 //
-//   npm run mint -- 192.168.2.9           asks the TV which device it is
-//   npm run mint -- 192.168.2.9 <pin>     the same, once the TV is pinned to loopback
-//   npm run mint -- --duid BDCPQZFMHIZII  when you already know
-//   npm run mint -- <tv-ip> <pin> --new-author   start the pair over
+// One distributor certificate names several devices, so a second set adds to the list; the author
+// certificate is kept, because Tizen refuses to update across a changed one and recovering needs sdb.
 //
-// Point it at a television and it resolves the DUID itself, which is the way
-// round that cannot go wrong. Copying one by hand can: a model name and a
-// device id are both thirteen anonymous characters, and a pair minted against
-// the wrong string signs packages the TV refuses with "Check certificate
-// error", naming neither.
-//
-// Public, which is the level anybody can mint for themselves. The app claims
-// no privilege above it — see config.xml, where two Samsung ones were dropped
-// precisely so that stays true — and a certificate that reaches further than
-// the package needs is a certificate that has to be explained to everybody who
-// installs it. `--privilege Partner` is there if an app ever needs one.
-//
-// A second television does not need a second pair. One distributor
-// certificate can name several devices, and this adds to the list rather than
-// replacing it — so the pair on this machine ends up covering every set you
-// have asked it about.
-//
-// The author certificate is kept. That is the important half: Tizen refuses to
-// *update* an app whose author certificate has changed —
-//
-//     install failed[118, -11], reason: Author certificate not match
-//
-// — and recovering from that means uninstalling, which needs sdb, which means
-// walking to the television and pointing its developer host IP back at a
-// computer. Minting a new author every time you add a TV would impose that on
-// every set you already had. So it happens once, and `--new-author` is the way
-// to say you meant it.
-//
-// Samsung binds a signing certificate to a device id, and issues it only to a
-// signed-in Samsung account. `tizenjs create-samsung-cert` does this too, and
-// currently cannot: it sends you to a sign-in gate that answers with an
-// authorization *code*, then reads that answer as though it contained an
-// access token —
-//
-//     accessInfo = { accessToken: accessInfo.access_token, userId: accessInfo.userId }
-//
-// — so both fields come out undefined and Samsung replies "Either userid or
-// accesstoken is incorrect", which sounds like a problem with the account.
-//
-// The sign-in that still hands back a token is the one TizenBrew Installer
-// uses: `check.do` with `actionID=StartOAuth2&accessToken=Y`, which POSTs the
-// answer to a redirect_uri as a form field whose value is JSON. So this serves
-// that redirect on localhost, waits for the browser to arrive, and calls the
-// certificate creator directly.
+// `tizenjs create-samsung-cert` cannot do this today — it reads Samsung's authorization code as an
+// access token — so this serves the `check.do` redirect on localhost and calls the creator directly.
 
 const { createServer } = require('http');
 const { writeFileSync, mkdirSync, existsSync } = require('fs');
@@ -61,12 +18,9 @@ const args = require('./args.js');
 const certificates = require('./certificates.js');
 const { duidOf, whyNoDuid } = require('./tv.js');
 
-// The flags that consume the token after them. Without this, `--duid <DUID>`
-// left the DUID sitting in the slot the TV address is read from — see args.js.
 const VALUED = ['--duid', '--privilege', '--password', '--name', '--output'];
 
-// The port is not arbitrary: it is the one registered in the redirect_uri that
-// Samsung's sign-in will send the browser back to.
+// The port registered in the redirect_uri Samsung sends the browser back to.
 const CALLBACK_PORT = 4794;
 const CALLBACK = `http://localhost:${CALLBACK_PORT}/signin/callback`;
 
@@ -75,13 +29,7 @@ const SIGN_IN = 'https://account.samsung.com/mobile/account/check.do' +
 
 const friendly = (message) => Object.assign(new Error(message), { isFriendly: true });
 
-/**
- * Waits for the browser to come back from Samsung with an access token.
- *
- * The answer arrives as a form POST whose `code` field is a JSON document —
- * not an authorization code, whatever the field is called — carrying the
- * access token, the user id and the address that signed in.
- */
+// The answer arrives as a form POST whose `code` field is a JSON document, whatever the field is called.
 const signIn = () => new Promise((resolve, reject) => {
     const server = createServer((request, response) => {
         const chunks = [];
@@ -135,13 +83,8 @@ const main = async () => {
     ui.heading('mint');
     ui.blank();
 
-    // Which televisions this pair will be for. Asking is the whole point: a
-    // pair minted against the wrong device id signs packages that upload and
-    // are then refused, with no message naming either.
-    //
-    // Several can be named at once, because collecting device ids is the part
-    // of setting up a fleet that costs a walk to each set — and every mint
-    // after the first is another sign-in.
+    // Asking is the whole point: a pair minted against the wrong device id signs packages that upload and are
+    // then refused, naming neither.
     const listed = named('--duid');
 
     const asked = listed
@@ -158,13 +101,8 @@ const main = async () => {
         );
     }
 
-    // A television that was named and would not answer. Saying so here, rather
-    // than falling through to "which television?", is the difference between an
-    // address to fix and a question about what was typed.
     if (!asked.length) throw friendly(whyNoDuid(ip, pin));
 
-    // Every television this pair already covers, plus the one being added. A
-    // second set costs a distributor certificate, not a new everything.
     const existing = certificates.locate();
     const covered = certificates.devicesIn(existing.distributor, existing.distributorPassword);
 
@@ -173,7 +111,6 @@ const main = async () => {
         covered
     );
 
-    // Keeping the author is the default, and the reason is in the header.
     const keeping = !argv.has('--new-author') && Boolean(existing.password) && existsSync(existing.author) && covered.length > 0;
 
     if (ip && !listed) ui.info('asked', `${ip} ${pin ? 'through Tizen Homebrew' : 'over sdb'}`);
@@ -205,19 +142,13 @@ const main = async () => {
         privilegeLevel: privilege
     };
 
-    // Only the distributor names devices, and only the distributor is fetched
-    // when an author certificate is being kept. The two are independent: the
-    // distributor carries its own key and its own chain, and Samsung issues it
-    // without reference to the author.
+    // Only the distributor names devices, and the two certificates are independent.
     const mintDistributor = async () => {
         await creator._downloadVDCertificates();
 
         const request = creator._generateDistributorCert(authorInfo, devices);
 
-        // Called twice because createCertificate calls it twice, once for the
-        // profile and once for the certificate. Whether that is deliberate or
-        // a slip in the library, it is what works today.
-        const profile = await creator._fetchDistributorCert(account, authorInfo, request);
+            const profile = await creator._fetchDistributorCert(account, authorInfo, request);
         const issued = await creator._fetchDistributorCert(account, authorInfo, request);
 
         return {
@@ -239,7 +170,6 @@ const main = async () => {
 
     if (!keeping) {
         writeFileSync(join(directory, 'author.p12'), Buffer.from(minted.authorCert, 'binary'));
-        // Beside the certificates, because everything here looks for it there.
         writeFileSync(join(directory, 'author.pw'), password);
     }
 
