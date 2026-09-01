@@ -20,15 +20,17 @@ const platformVersion = () => {
     }
 };
 
+// Runs on the shared connection, so a probe every fifteen seconds costs a stream rather than a socket.
+// Two connect tries, not the default three: the probe also runs on page load and must answer quickly.
 const canReachSdb = async () => {
     try {
-        const session = await sdb.connect({ timeout: 4000 });
+        return await sdb.withSession({ timeout: 4000, attempts: 2 }, async (session) => {
+            // A reply that is not a device id still proves the daemon is answering.
+            const duid = await session.getDuid()
+                .catch((error) => { if (error.code === 'sdbDuid') return null; throw error; });
 
-        const duid = await session.getDuid().catch(() => null);
-
-        session.close();
-
-        return { reachable: true, error: null, detail: null, duid };
+            return { reachable: true, error: null, detail: null, duid };
+        });
     } catch (error) {
         return { reachable: false, error: error.code || 'unknown', detail: error.message || null, duid: null };
     }

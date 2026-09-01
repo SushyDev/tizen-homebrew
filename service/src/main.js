@@ -136,6 +136,9 @@ const start = () => {
     };
 
     const refreshDevice = async () => {
+        // An install has the connection; probing across it would only add commands to what sdbd is doing.
+        if (store.select('installing')) return store.select('device');
+
         const previous = store.select('device');
         const first = await device.probe();
 
@@ -391,6 +394,9 @@ const start = () => {
         json(response, { ok: true, build: BUILD, ...payload });
 
         svc.warn(`${host(request.socket && request.socket.remoteAddress)} asked the service to ${asked}`);
+
+        // sdbd is told the connection is going, rather than finding out from a reset when this exits.
+        sdb.release();
 
         // The response has to clear the socket first, because the caller waits on it.
         setTimeout(() => {

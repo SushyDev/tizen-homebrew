@@ -25,7 +25,9 @@ const SDB_ERROR_CODES = {
     sdbRefused: ErrorCode.SDB_REFUSED,
     sdbReset: ErrorCode.DEBUG_IP_WRONG,
     sdbClosed: ErrorCode.SDB_REFUSED,
-    sdbTimeout: ErrorCode.SDB_TIMEOUT
+    sdbTimeout: ErrorCode.SDB_TIMEOUT,
+    sdbFraming: ErrorCode.SDB_UNREACHABLE,
+    sdbAuthRequired: ErrorCode.SDB_UNREACHABLE
 };
 
 function asProtocolError(err) {
@@ -87,7 +89,7 @@ Relay.prototype.exec = function (id, command, options) {
     let output = '';
     let truncated = false;
 
-    const run = sdb.withSession({}, (session) =>
+    const run = sdb.withSession({ log: self.log }, (session) =>
         session.exec(`shell:0 ${trimmed}`, {
             timeout,
             onData: (chunk) => {

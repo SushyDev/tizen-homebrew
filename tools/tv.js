@@ -93,7 +93,7 @@ const duidOf = async (ip, pin) => {
     if (relayed) return relayed;
 
     return overSdb(ip).catch((error) => {
-        if (['sdbRefused', 'sdbReset', 'sdbClosed', 'sdbTimeout'].indexOf(error.code) !== -1) return null;
+        if (['sdbRefused', 'sdbReset', 'sdbClosed', 'sdbTimeout', 'sdbDuid'].indexOf(error.code) !== -1) return null;
         throw error;
     });
 };
