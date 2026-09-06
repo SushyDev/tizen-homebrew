@@ -1,7 +1,7 @@
 'use strict';
 
-// A stand-in sdbd on a loopback port, so the client's framing and its retries can be exercised
-// without a television.
+// A stand-in sdbd on a loopback port, so the client's framing, its retries and the connection it
+// keeps can be exercised without a television.
 
 const net = require('net');
 
@@ -36,10 +36,10 @@ const packets = (socket, onPacket) => {
 
             if (held.length < total) return;
 
-            const data = held.slice(adb.HEADER_BYTES, total);
+            header.data = held.slice(adb.HEADER_BYTES, total);
             held = held.slice(total);
 
-            onPacket(header, data);
+            onPacket(header);
         }
     });
 };
@@ -50,28 +50,41 @@ const corrupt = (packet, offset, value) => {
     return copy;
 };
 
+// The stream id this daemon gives out; every scenario here runs one stream at a time per command.
+const REMOTE = 42;
+
 const banner = () => adb.encodePacket(adb.COMMANDS.CNXN, 0x01000000, adb.MAX_PAYLOAD, 'device::tv');
 
-// Answers the handshake, then one command with `reply` and a CLSE once the client acknowledges it.
-const wellBehaved = (reply, before) => (socket) => {
+const okay = (socket, header) => socket.write(adb.encodePacket(adb.COMMANDS.OKAY, REMOTE, header.arg1));
+const wrote = (socket, header, text) =>
+    socket.write(adb.encodePacket(adb.COMMANDS.WRTE, REMOTE, header.arg1, Buffer.from(text)));
+const bye = (socket, header) => socket.write(adb.encodePacket(adb.COMMANDS.CLSE, REMOTE, header.arg1));
+
+// Answers the handshake; every packet after it is the scenario's business.
+const daemon = (onPacket) => (socket) => {
     packets(socket, (header) => {
-        if (header.command === adb.COMMANDS.CNXN) {
-            if (before) socket.write(before);
-            socket.write(banner());
-            return;
-        }
-
-        if (header.command === adb.COMMANDS.OPEN) {
-            socket.write(adb.encodePacket(adb.COMMANDS.OKAY, 42, header.arg1));
-            socket.write(adb.encodePacket(adb.COMMANDS.WRTE, 42, header.arg1, Buffer.from(reply)));
-            return;
-        }
-
-        if (header.command === adb.COMMANDS.OKAY) {
-            socket.write(adb.encodePacket(adb.COMMANDS.CLSE, 42, header.arg1));
-        }
+        if (header.command === adb.COMMANDS.CNXN) return socket.write(banner());
+        if (onPacket) onPacket(header, socket);
     });
 };
+
+// Answers one command with `reply`, and closes the stream once the client acknowledges it.
+const wellBehaved = (reply) => daemon((header, socket) => {
+    if (header.command === adb.COMMANDS.OPEN) {
+        okay(socket, header);
+        wrote(socket, header, reply);
+    } else if (header.command === adb.COMMANDS.OKAY) {
+        bye(socket, header);
+    }
+});
+
+// Each OPEN gets its own answer, so a retried read is answered afresh.
+const answering = (chunks) => daemon((header, socket) => {
+    if (header.command !== adb.COMMANDS.OPEN) return;
+
+    okay(socket, header);
+    chunks.forEach((text, at) => setTimeout(() => wrote(socket, header, text), at * 20));
+});
 
 const against = async (behaviour, run) => {
     const server = await listen(behaviour);
@@ -83,13 +96,15 @@ const against = async (behaviour, run) => {
     }
 };
 
+const dial = (port, extra) => sdb.connect(Object.assign({ port, timeout: 2000 }, extra));
+
 const failure = (promise) => promise.then((value) => ({ value }), (error) => ({ error }));
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 (async () => {
     await against(wellBehaved('hello\n'), async (port) => {
-        const session = await sdb.connect({ port, timeout: 2000 });
+        const session = await dial(port);
         const output = await session.exec('shell:0 echo hello', { timeout: 2000 });
 
         session.close();
@@ -100,7 +115,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     await against((socket) => {
         packets(socket, () => socket.write(corrupt(banner(), 20, 0)));
     }, async (port) => {
-        const { error } = await failure(sdb.connect({ port, timeout: 2000, attempts: 1 }));
+        const { error } = await failure(dial(port, { attempts: 1 }));
 
         check('a wrong magic is refused rather than dispatched',
             !!error && error.code === 'sdbFraming' && /magic/.test(error.message),
@@ -110,25 +125,21 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     await against((socket) => {
         packets(socket, () => socket.write(corrupt(adb.encodePacket(adb.COMMANDS.WRTE, 1, 2), 12, 99999)));
     }, async (port) => {
-        const { error } = await failure(sdb.connect({ port, timeout: 2000, attempts: 1 }));
+        const { error } = await failure(dial(port, { attempts: 1 }));
 
         check('a payload longer than the agreed maximum is refused',
             !!error && error.code === 'sdbFraming' && /99999/.test(error.message),
             error ? `${error.code}: ${error.message}` : 'it connected');
     });
 
-    await against((socket) => {
-        packets(socket, (header) => {
-            if (header.command === adb.COMMANDS.CNXN) return socket.write(banner());
+    await against(daemon((header, socket) => {
+        if (header.command !== adb.COMMANDS.OPEN) return;
 
-            if (header.command === adb.COMMANDS.OPEN) {
-                socket.write(adb.encodePacket(adb.COMMANDS.OKAY, 42, header.arg1));
-                socket.write(corrupt(
-                    adb.encodePacket(adb.COMMANDS.WRTE, 42, header.arg1, Buffer.from('hello\n')), 16, 1));
-            }
-        });
-    }, async (port) => {
-        const session = await sdb.connect({ port, timeout: 2000 });
+        okay(socket, header);
+        socket.write(corrupt(
+            adb.encodePacket(adb.COMMANDS.WRTE, REMOTE, header.arg1, Buffer.from('hello\n')), 16, 1));
+    }), async (port) => {
+        const session = await dial(port);
         const { error } = await failure(session.exec('shell:0 echo hello', { timeout: 2000 }));
 
         session.close();
@@ -141,7 +152,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         packets(socket, () => socket.write(
             adb.encodePacket(adb.COMMANDS.AUTH, 1, 0, Buffer.from('token'))));
     }, async (port) => {
-        const { error } = await failure(sdb.connect({ port, timeout: 2000, attempts: 1 }));
+        const { error } = await failure(dial(port, { attempts: 1 }));
 
         check('an AUTH challenge fails by name instead of silently',
             !!error && error.code === 'sdbAuthRequired' && /AUTH/.test(error.message),
@@ -155,7 +166,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         wellBehaved('hello\n')(socket);
     }, async (port) => {
         const said = [];
-        const session = await sdb.connect({ port, timeout: 2000, backoff: 20, log: (line) => said.push(line) });
+        const session = await dial(port, { backoff: 20, log: (line) => said.push(line) });
 
         session.close();
 
@@ -164,21 +175,30 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             `${connections} connections, log ${JSON.stringify(said)}`);
     });
 
-    const closed = await listen(() => {});
-    const deadPort = closed.address().port;
-    await shut(closed);
+    const vacant = await listen(() => {});
+    const deadPort = vacant.address().port;
+    await shut(vacant);
 
-    const began = Date.now();
-    const refused = await failure(sdb.connect({ port: deadPort, timeout: 2000, backoff: 1000 }));
-    const spent = Date.now() - began;
+    const refusedAt = Date.now();
+    const refused = await failure(dial(deadPort, { backoff: 1000 }));
+    const refusedIn = Date.now() - refusedAt;
 
     check('a refusal is not retried, so Developer Mode being off answers at once',
-        !!refused.error && refused.error.code === 'sdbRefused' && spent < 500,
-        refused.error ? `${refused.error.code} after ${spent}ms` : 'it connected');
+        !!refused.error && refused.error.code === 'sdbRefused' && refusedIn < 500,
+        refused.error ? `${refused.error.code} after ${refusedIn}ms` : 'it connected');
 
-    await against(wellBehaved('hello\n', adb.encodePacket(adb.COMMANDS.SYNC, 0, 0)), async (port) => {
+    await against(daemon((header, socket) => {
+        if (header.command === adb.COMMANDS.OPEN) {
+            // Well-framed, and nothing this client has a case for.
+            socket.write(adb.encodePacket(adb.COMMANDS.SYNC, 0, 0));
+            okay(socket, header);
+            wrote(socket, header, 'hello\n');
+        } else if (header.command === adb.COMMANDS.OKAY) {
+            bye(socket, header);
+        }
+    }), async (port) => {
         const said = [];
-        const session = await sdb.connect({ port, timeout: 2000, log: (line) => said.push(line) });
+        const session = await dial(port, { log: (line) => said.push(line) });
         const output = await session.exec('shell:0 echo hello', { timeout: 2000 });
 
         session.close();
@@ -188,17 +208,13 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             `output ${JSON.stringify(output)}, log ${JSON.stringify(said)}`);
     });
 
-    await against((socket) => {
-        packets(socket, (header) => {
-            if (header.command === adb.COMMANDS.CNXN) return socket.write(banner());
+    await against(daemon((header, socket) => {
+        if (header.command !== adb.COMMANDS.OPEN) return;
 
-            if (header.command === adb.COMMANDS.OPEN) {
-                socket.write(adb.encodePacket(adb.COMMANDS.OKAY, 42, header.arg1));
-                setTimeout(() => socket.destroy(), 50);
-            }
-        });
-    }, async (port) => {
-        const session = await sdb.connect({ port, timeout: 2000 });
+        okay(socket, header);
+        setTimeout(() => socket.destroy(), 50);
+    }), async (port) => {
+        const session = await dial(port);
 
         const began = Date.now();
         const { error } = await failure(session.exec('shell:0 sleep 100', { timeout: 5000 }));
@@ -211,22 +227,8 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             error ? `${error.message} after ${spent}ms` : 'it resolved');
     });
 
-    // Each OPEN gets its own answer, so a retried read is answered afresh.
-    const answering = (chunks) => (socket) => {
-        packets(socket, (header) => {
-            if (header.command === adb.COMMANDS.CNXN) return socket.write(banner());
-
-            if (header.command === adb.COMMANDS.OPEN) {
-                socket.write(adb.encodePacket(adb.COMMANDS.OKAY, 42, header.arg1));
-
-                chunks.forEach((text, at) => setTimeout(() => socket.write(
-                    adb.encodePacket(adb.COMMANDS.WRTE, 42, header.arg1, Buffer.from(text))), at * 20));
-            }
-        });
-    };
-
     await against(answering(['2DCKJ', 'ITTLDPSA\n']), async (port) => {
-        const session = await sdb.connect({ port, timeout: 2000 });
+        const session = await dial(port);
         const duid = await session.getDuid();
 
         session.close();
@@ -235,7 +237,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     });
 
     await against(answering(['sh: getduid: command not found\n']), async (port) => {
-        const session = await sdb.connect({ port, timeout: 2000 });
+        const session = await dial(port);
         const { error, value } = await failure(session.getDuid({ attempts: 2 }));
 
         session.close();
@@ -248,10 +250,12 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     sdb.release();
 
     let sockets = 0;
-    await against((socket) => {
+    const counted = (behaviour) => (socket) => {
         sockets++;
-        wellBehaved('hi\n')(socket);
-    }, async (port) => {
+        behaviour(socket);
+    };
+
+    await against(counted(wellBehaved('hi\n')), async (port) => {
         const first = await sdb.withSession({ port, timeout: 2000 },
             (session) => session.exec('shell:0 one', { timeout: 2000 }));
         const second = await sdb.withSession({ port, timeout: 2000 },
@@ -265,10 +269,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     });
 
     sockets = 0;
-    await against((socket) => {
-        sockets++;
-        wellBehaved('hi\n')(socket);
-    }, async (port) => {
+    await against(counted(wellBehaved('hi\n')), async (port) => {
         const both = await Promise.all([
             sdb.withSession({ port, timeout: 2000 }, (session) => session.exec('shell:0 one', { timeout: 2000 })),
             sdb.withSession({ port, timeout: 2000 }, (session) => session.exec('shell:0 two', { timeout: 2000 }))
@@ -285,24 +286,28 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     await against((socket) => {
         socket.on('end', () => { ended = true; });
 
-        packets(socket, (header) => {
-            if (header.command === adb.COMMANDS.CNXN) return socket.write(banner());
-            if (header.command === adb.COMMANDS.OPEN) {
-                return socket.write(adb.encodePacket(adb.COMMANDS.OKAY, 42, header.arg1));
-            }
+        daemon((header) => {
+            if (header.command === adb.COMMANDS.OPEN) okay(socket, header);
             if (header.command === adb.COMMANDS.CLSE) closes++;
-        });
+        })(socket);
     }, async (port) => {
         const running = sdb.withSession({ port, timeout: 2000 },
             (session) => session.exec('shell:0 sleep 100', { timeout: 3000 }));
 
         await wait(150);
+
+        const began = Date.now();
         sdb.release();
         await failure(running);
+        const spent = Date.now() - began;
+
         await wait(150);
 
         check('a released connection closes its streams and ends the socket, rather than resetting it',
             closes === 1 && ended, `${closes} CLSE, socket ended ${ended}`);
+
+        check('and the command it was carrying settles then, not at its own timeout',
+            spent < 1000, `it took ${spent}ms`);
     });
 
     let attempts = 0;
@@ -311,13 +316,12 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
         if (attempts > 1) return wellBehaved('hi\n')(socket);
 
-        packets(socket, (header) => {
-            if (header.command === adb.COMMANDS.CNXN) return socket.write(banner());
-            if (header.command === adb.COMMANDS.OPEN) {
-                socket.write(adb.encodePacket(adb.COMMANDS.OKAY, 42, header.arg1));
-                setTimeout(() => socket.destroy(), 30);
-            }
-        });
+        daemon((header) => {
+            if (header.command !== adb.COMMANDS.OPEN) return;
+
+            okay(socket, header);
+            setTimeout(() => socket.destroy(), 30);
+        })(socket);
     }, async (port) => {
         const broke = await failure(sdb.withSession({ port, timeout: 2000 },
             (session) => session.exec('shell:0 one', { timeout: 3000 })));
@@ -334,26 +338,21 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     let told = 0;
     let chatter = null;
-    await against((socket) => {
-        packets(socket, (header) => {
-            if (header.command === adb.COMMANDS.CNXN) return socket.write(banner());
+    await against(daemon((header, socket) => {
+        if (header.command === adb.COMMANDS.OPEN) {
+            okay(socket, header);
+            wrote(socket, header, 'done\n');
 
-            if (header.command === adb.COMMANDS.OPEN) {
-                socket.write(adb.encodePacket(adb.COMMANDS.OKAY, 42, header.arg1));
-                socket.write(adb.encodePacket(adb.COMMANDS.WRTE, 42, header.arg1, Buffer.from('done\n')));
+            // As vd_appinstall does, the daemon keeps talking after the line that says it worked.
+            chatter = setInterval(() => wrote(socket, header, 'still here\n'), 20);
+            return;
+        }
 
-                // As vd_appinstall does, the daemon keeps talking after the line that says it worked.
-                chatter = setInterval(() => socket.write(
-                    adb.encodePacket(adb.COMMANDS.WRTE, 42, header.arg1, Buffer.from('still here\n'))), 20);
-                return;
-            }
-
-            if (header.command === adb.COMMANDS.CLSE) {
-                told++;
-                if (chatter) clearInterval(chatter);
-            }
-        });
-    }, async (port) => {
+        if (header.command === adb.COMMANDS.CLSE) {
+            told++;
+            clearInterval(chatter);
+        }
+    }), async (port) => {
         const output = await sdb.withSession({ port, timeout: 2000 }, (session) =>
             session.exec('shell:0 vd_appinstall', { timeout: 2000, until: (o) => /done/.test(o) }));
 
@@ -363,7 +362,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             told === 1 && output === 'done\n', `${told} CLSE, ${JSON.stringify(output)}`);
 
         sdb.release();
-        if (chatter) clearInterval(chatter);
+        clearInterval(chatter);
     });
 
     const failed = results.filter((r) => !r).length;

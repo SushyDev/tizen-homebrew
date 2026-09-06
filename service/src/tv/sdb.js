@@ -333,6 +333,10 @@ function release() {
         idleTimer = null;
     }
 
+    // A connection still being made is released as soon as it arrives, so nothing outlives a shutdown
+    // and gets reset by the process exiting under it.
+    if (opening) opening.then((session) => session.close(), () => {});
+
     const session = held;
 
     held = null;

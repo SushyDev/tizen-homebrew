@@ -24,6 +24,8 @@ const KEEPALIVE_MS = 30000;
 
 const nameOf = (command) => NAMES[command] || `0x${(command >>> 0).toString(16)}`;
 
+const NOTHING = () => {};
+
 // The magic is the command's one's complement, which is how a peer spots a desynchronized stream.
 const magicFor = (command) => (command ^ 0xFFFFFFFF) >>> 0;
 
@@ -122,7 +124,7 @@ class AdbStream extends Duplex {
 
         const { chunk, done } = this._queue.shift();
 
-        this._inFlight = done || (() => {});
+        this._inFlight = done || NOTHING;
         this._connection._send(COMMANDS.WRTE, this._localId, this._remoteId, chunk);
     }
 
@@ -166,9 +168,7 @@ class AdbConnection extends EventEmitter {
 
         // Also keeps a late socket error from reaching Node as an unhandled event, which exits the process.
         this._socket.on('error', (error) => this._abandon(error));
-        this._socket.on('close', () => this._abandon(Object.assign(
-            new Error('sdbd closed the connection with a command still running'),
-            { code: 'ESDBCLOSED' })));
+        this._socket.on('close', () => this._abandon());
 
         this._socket.on('connect', () => {
             this._connected = true;
@@ -199,13 +199,16 @@ class AdbConnection extends EventEmitter {
                 const data = this._socket.read(this._header.dataLength);
                 if (!data) return;
 
-                if (checksum(data) !== this._header.dataCheck) {
+                const sum = checksum(data);
+
+                if (sum !== this._header.dataCheck) {
                     return this._desynchronized(
-                        `${nameOf(this._header.command)} payload sums to ${checksum(data)} where ` +
+                        `${nameOf(this._header.command)} payload sums to ${sum} where ` +
                         `${this._header.dataCheck} was due — the packet stream is out of step`);
                 }
 
-                this._dispatch({ ...this._header, data });
+                this._header.data = data;
+                this._dispatch(this._header);
                 this._awaitingHeader = true;
             }
         }
@@ -223,10 +226,7 @@ class AdbConnection extends EventEmitter {
     // sdbd hears the streams go before the socket does, and the socket goes with a FIN: destroying one
     // that still has unread bytes sends a reset instead, and sdbd resets the next client after one of those.
     close() {
-        if (this._handshakeDone) {
-            this._streams.forEach((stream) => this._send(
-                COMMANDS.CLSE, stream.localId(), stream.remoteId() === -1 ? 0 : stream.remoteId()));
-        }
+        this._streams.forEach((stream) => this._closeStream(stream));
 
         // Whatever is still arriving has to be read, or the close is abortive anyway.
         this._socket.removeAllListeners('readable');
@@ -249,13 +249,18 @@ class AdbConnection extends EventEmitter {
     }
 
     // A dead socket leaves every open command waiting on output that will never come.
-    _abandon(error) {
+    _abandon(cause) {
+        if (this._streams.size === 0) return;
+
+        const error = cause || Object.assign(
+            new Error('sdbd closed the connection with a command still running'), { code: 'ESDBCLOSED' });
+
         const streams = Array.from(this._streams.values());
 
         this._streams.clear();
 
         streams.forEach((stream) => {
-            if (error && stream.listenerCount('error') > 0) stream.emit('error', error);
+            if (stream.listenerCount('error') > 0) stream.emit('error', error);
             stream.push(null);
             stream.end();
         });
@@ -338,6 +343,6 @@ class AdbConnection extends EventEmitter {
 const createConnection = (options) => new AdbConnection(options);
 
 module.exports = {
-    createConnection, encodePacket, decodeHeader, headerFault, checksum,
+    createConnection, encodePacket, decodeHeader, checksum,
     COMMANDS, HEADER_BYTES, MAX_PAYLOAD
 };
