@@ -15,6 +15,11 @@ const Signature = require('./signature.js');
 
 const SIGNATURE_FILE = /^(author-signature\.xml|signature\d*\.xml)$/i;
 
+// A widget names itself in config.xml and a native or .NET package in tizen-manifest.xml.
+// Signing treats both the same — every file but the signatures is hashed — so the manifest
+// is only ever asked for as proof the archive is a Tizen package at all.
+const MANIFESTS = ['config.xml', 'tizen-manifest.xml'];
+
 const refuse = (message) => Object.assign(new Error(message), { code: 'resignFailed' });
 
 const isPair = (pair) => Boolean(pair) &&
@@ -58,8 +63,8 @@ const resign = async (archive, certificates) => {
                 data: await zip.files[name].async('nodebuffer')
             })));
 
-        if (!named.some((file) => decodeURIComponent(file.uri) === 'config.xml')) {
-            throw refuse('That package has no config.xml, so it is not a Tizen widget.');
+        if (!named.some((file) => MANIFESTS.indexOf(decodeURIComponent(file.uri)) !== -1)) {
+            throw refuse('That package has no config.xml or tizen-manifest.xml, so it is not a Tizen package.');
         }
 
         return named;
