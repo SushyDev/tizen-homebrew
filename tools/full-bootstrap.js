@@ -12,7 +12,7 @@ const { duidOf, describe, localAddressFor, DEVICE_API_PORT } = require('./tv.js'
 
 const VALUED = ['--privilege', '--password', '--name', '--output'];
 
-const MINT_FLAGS = ['--new-author', '--privilege', '--name', '--password', '--output'];
+const MINT_FLAGS = ['--new-author', '--public', '--privilege', '--name', '--password', '--output'];
 
 const friendly = (message) => Object.assign(new Error(message), { isFriendly: true });
 

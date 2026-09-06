@@ -40,7 +40,7 @@ const DEVELOPER = globalThis.__HOMEBREW_DEV__ === true;
 
 const start = () => {
     const startedAt = new Date().toISOString();
-    const secret = DEVELOPER ? pin.DEVELOPER_PIN : pin.generate();
+    const secret = DEVELOPER ? pin.DEVELOPER_PIN : config.pairingPin();
 
     const svc = log.on(Facility.SVC);
     const net = log.on(Facility.NET);
@@ -58,7 +58,8 @@ const start = () => {
         log.on(Facility.AUTH).warn(`DEVELOPER BUILD — pin fixed at ${secret}, and POST /dev/eval will run ` +
             'anything this network sends it. Do not leave this on a television you care about.');
     } else {
-        log.on(Facility.AUTH).info(`pairing pin ${secret} — regenerated every start`);
+        log.on(Facility.AUTH).info(`pairing pin ${secret} — kept across restarts, so a reboot does not ` +
+            'unpair every phone');
     }
 
     const adopted = config.adoptHandoff();
@@ -135,7 +136,14 @@ const start = () => {
         return state;
     };
 
+    // Filled in once the socket server is up, at the end of this function. The sweep below is the
+    // only thing that learns something without being asked, so it is the only thing that pushes.
+    let sockets = null;
+
     const refreshDevice = async () => {
+        // An install has the connection; probing across it would only add commands to what sdbd is doing.
+        if (store.select('installing')) return store.select('device');
+
         const previous = store.select('device');
         const first = await device.probe();
 
@@ -145,6 +153,11 @@ const start = () => {
             : first;
 
         store.update({ device: state });
+
+        // Compared whole: `ready` alone would hold back a changed reason for the same unreadiness.
+        if (sockets && JSON.stringify(previous) !== JSON.stringify(state)) {
+            sockets.broadcast(protocol.Outbound.STATE, { ...state, hasCertificates: config.hasCertificates() });
+        }
 
         return announce(state, previous);
     };
@@ -185,7 +198,8 @@ const start = () => {
             .sort((a, b) => wiredFirst(a.iface) - wiredFirst(b.iface));
     };
 
-    // The TV's own page polls these several times a second, so they are logged at debug.
+    // The TV's own page watches over the socket now, but these stay cheap to ask for and a phone or a
+    // script may still sweep them, so they are logged at debug.
     const POLLED = ['/logs', '/state', '/pin', '/version', '/health'];
 
     const quiet = (request, path) =>
@@ -212,19 +226,25 @@ const start = () => {
         addresses: lanAddresses().map((entry) => entry.address)
     }));
 
+    // What a caller on the television itself is allowed to know: the code, and where to reach this
+    // from a phone. The socket says the same thing in its greeting, so the two cannot drift.
+    const pairing = () => {
+        const addresses = lanAddresses();
+
+        return {
+            pin: secret,
+            port: PORT,
+            addresses: addresses.map((entry) => entry.address),
+            url: addresses.length ? `http://${addresses[0].address}:${PORT}` : null
+        };
+    };
+
     router.on.get('/pin', (request, response) => {
         if (!fromLoopback(request)) {
             return failure(response, 403, ErrorCode.UNAUTHORIZED, 'Only readable from the TV itself.');
         }
 
-        const addresses = lanAddresses();
-
-        json(response, {
-            pin: secret,
-            port: PORT,
-            addresses: addresses.map((entry) => entry.address),
-            url: addresses.length ? `http://${addresses[0].address}:${PORT}` : null
-        });
+        json(response, pairing());
     });
 
     // Served from the last sweep: probing here made the set connect to its own sdbd twelve times a minute.
@@ -379,8 +399,9 @@ const start = () => {
         json(response, { ok: true });
     });
 
-    // Exiting is all the service can do about its own lifetime: nothing respawns it, and the UI page
-    // holds no privilege to stop a sibling application.
+    // Exiting is all the service can do about its own lifetime: the UI page holds no privilege to stop
+    // a sibling application. What brings it back is config.xml — auto-restart if the platform honours
+    // it, and the page's own launchAppControl if it does not.
     const exitAfterResponse = (payload, asked, why) => (request, response) => {
         const verdict = authorise(request.headers['x-homebrew-pin']);
 
@@ -391,6 +412,9 @@ const start = () => {
         json(response, { ok: true, build: BUILD, ...payload });
 
         svc.warn(`${host(request.socket && request.socket.remoteAddress)} asked the service to ${asked}`);
+
+        // sdbd is told the connection is going, rather than finding out from a reset when this exits.
+        sdb.release();
 
         // The response has to clear the socket first, because the caller waits on it.
         setTimeout(() => {
@@ -403,7 +427,7 @@ const start = () => {
         { restarting: true }, 'restart', 'so the platform reloads it on new code'));
 
     router.on.post('/shutdown', exitAfterResponse(
-        { stopping: true }, 'stop', 'because the television app is closing'));
+        { stopping: true }, 'stop', 'because someone asked it to'));
 
     const uiRoot = [
         join(__dirname, '..', '..', 'ui', 'dist'),
@@ -470,7 +494,10 @@ const start = () => {
 
     });
 
-    require('./socket.js').attach({ server, store, secret, authorise, installer, catalog, updates, relay, refreshDevice, config, protocol, log });
+    sockets = require('./socket.js').attach({
+        server, store, secret, authorise, installer, catalog, updates, relay, refreshDevice,
+        fromLoopback, greeting: () => ({ ...pairing(), build: BUILD }), recorded, config, protocol, log
+    });
 
     return { server, port: PORT, pin: secret, build: BUILD };
 };

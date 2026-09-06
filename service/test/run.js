@@ -98,6 +98,10 @@ setTimeout(() => {
         .then((msg) => {
             check('server asks for a PIN on connect', msg.payload.needsPin === true, JSON.stringify(msg));
 
+            // The TV's own page is on loopback, so the greeting carries the code and it never has to ask.
+            check('and hands a loopback caller the pairing code with the greeting',
+                msg.payload.pin === pin, JSON.stringify(msg.payload));
+
             send(conn, 'getState');
             return next(conn, 'error');
         })
@@ -171,6 +175,26 @@ setTimeout(() => {
             check('a failed install does NOT wipe stored certificates', stillHasCerts === true,
                 'certificates were cleared, which is the reference implementation bug');
             require('../src/config.js').clear();
+
+            send(conn, 'watch', {});
+            return next(conn, 'log');
+        })
+        .then((msg) => {
+            check('watch answers with the log recorded so far',
+                Array.isArray(msg.payload.lines) && msg.payload.lines.length > 0,
+                JSON.stringify(msg.payload).slice(0, 160));
+
+            const last = msg.payload.lines[msg.payload.lines.length - 1].seq;
+
+            // Any refusal is written to the log, so this is a request the service is certain to record.
+            send(conn, 'relayExec', { id: 'r3' });
+
+            return next(conn, 'log').then((pushed) => ({ last, pushed }));
+        })
+        .then(({ last, pushed }) => {
+            check('and pushes what is written after it, so the TV page never polls its own log',
+                pushed.payload.lines.length > 0 && pushed.payload.lines[0].seq > last,
+                JSON.stringify(pushed.payload).slice(0, 160));
 
             const failed = results.filter((r) => !r.ok).length;
             console.log(`\n${results.length - failed}/${results.length} checks passed.`);

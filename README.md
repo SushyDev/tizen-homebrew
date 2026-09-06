@@ -34,10 +34,12 @@ npm install
 npm run full-bootstrap -- <tv-ip>
 ```
 
-It asks the TV which device it is, mints a Samsung certificate bound to it (a
-browser opens — sign in), then builds, signs, installs and opens the app. No
-Tizen Studio needed. The certificate is yours — your own Samsung account,
-public level, nothing shared — and lands in `~/.tizen-certs`.
+It asks the TV which device it is, mints a Samsung Partner certificate bound to
+it (a browser opens — sign in), then builds, signs, installs and opens the app.
+No Tizen Studio needed. The certificate is yours — your own Samsung account,
+nothing shared — and lands in `~/.tizen-certs`. Add `--public` for a public one
+instead, which signs and installs the same but does not carry the partner-only
+on-boot service.
 
 It also leaves the certificates on the TV, so from the first boot it re-signs
 whatever it installs — including packages built by other people.
@@ -167,8 +169,8 @@ npm run package && npm run push -- <tv-ip> <pin>
 
 | | |
 | --- | --- |
-| `npm run full-bootstrap -- <ip>` | Certificate, build, install — the whole setup |
-| `npm run mint -- <ip> [pin]` | Certificate only; adds this TV to the pair you have |
+| `npm run full-bootstrap -- <ip>` | Partner certificate, build, install — the whole setup (`--public` overrides) |
+| `npm run mint -- <ip> [pin]` | Partner certificate only; adds this TV to the pair you have (`--public` overrides) |
 | `npm run package` | Build a `.wgt` signed by nobody — what a release carries |
 | `npm run package -- --sign` | The same, signed for this machine's TV — what sdb needs |
 | `npm run bootstrap -- <ip>` | Install over sdb (needs Host PC IP pointed here) |
@@ -228,14 +230,29 @@ nowhere else. That is why prebuilt widgets are not something you can hand
 around, and why the TV is handed its own pair during setup: a set holding one
 re-signs everything it installs, in about 150ms.
 
+**Always on.** `config.xml` declares the service `on-boot` and `auto-restart`,
+so it comes up with the television and there is nothing to open: switch the set
+on, load the address on a phone, install. The app is still there for the log,
+the pairing code and a restart button, and closing it leaves the service
+running.
+
+Confirmed working on a QE65S93DATXXN signed with a **partner** distributor
+certificate: after a restart the service was up with no app ever opened, one
+process, no loopback client in its log. Both attributes are documented as
+platform and partner signed only, and whether a public pair gets them is
+still untested. If a set refuses the package over them, dropping the two
+attributes returns it to launching the service when the app opens.
+
 **Security.** The install endpoint is open to the network on purpose, so it is
-gated by the 6-digit PIN — regenerated every start, never written down by the
-TV, and readable only over loopback, so a person has to relay it. The phone
-that paired keeps it in its own browser storage, per TV, and drops it the
-moment the service refuses it. Five wrong guesses locks pairing for five
-minutes. The sdb relay is a bigger escalation: off by
-default, a second opt-in to survive reboots, and it refuses commands that would
-disable it or uninstall the app.
+gated by the 6-digit PIN — minted on first run and kept beside the signing keys,
+readable only over loopback, so a person has to relay it. It is kept rather than
+regenerated on every start because of the above: a code that changed at every
+boot would be readable only off the screen booting the service exists to avoid,
+and every reboot would unpair every phone. The phone that paired keeps it in its
+own browser storage, per TV, and drops it the moment the service refuses it.
+Five wrong guesses locks pairing for five minutes. The sdb relay is a bigger
+escalation: off by default, a second opt-in to survive reboots, and it refuses
+commands that would disable it or uninstall the app.
 
 **The log.** sdbd's allowlist excludes every log tool, so the app carries its
 own. Press **show logs** on the TV; up/down a line, left/right a page, RED for

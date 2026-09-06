@@ -10,8 +10,8 @@
 // access token — so this serves the `check.do` redirect on localhost and calls the creator directly.
 
 const { createServer } = require('http');
-const { writeFileSync, mkdirSync, existsSync } = require('fs');
-const { join } = require('path');
+const { writeFileSync, copyFileSync, mkdirSync, existsSync } = require('fs');
+const { join, dirname, resolve } = require('path');
 
 const ui = require('./ui.js');
 const args = require('./args.js');
@@ -77,7 +77,9 @@ const main = async () => {
     const named = (flag) => argv.value(flag);
 
     const [ip, pin] = argv.positionals;
-    const privilege = named('--privilege') || 'Public';
+    // Partner is needed for the service's on-boot and auto-restart declarations.
+    // Keep an explicit public path for sets or accounts that cannot mint Partner.
+    const privilege = argv.has('--public') ? 'Public' : (named('--privilege') || 'Partner');
     const password = named('--password') || Math.random().toString(36).slice(2, 12);
 
     ui.heading('mint');
@@ -97,7 +99,8 @@ const main = async () => {
             '  npm run mint -- <tv-ip>              ask the TV over sdb\n' +
             '  npm run mint -- <tv-ip> <pin>        ask Tizen Homebrew on the TV\n' +
             '  npm run mint -- --duid <DUID>        when you already know it\n' +
-            '  npm run mint -- --duid <A>,<B>,<C>   several at once'
+            '  npm run mint -- --duid <A>,<B>,<C>   several at once\n\n' +
+            '  Add --public to mint a public certificate instead of the default Partner one.'
         );
     }
 
@@ -173,6 +176,14 @@ const main = async () => {
         writeFileSync(join(directory, 'author.pw'), password);
     }
 
+    // A kept author lives beside the pair it came with, so `--output` takes a copy and stands alone.
+    const elsewhere = keeping && resolve(dirname(existing.author)) !== resolve(directory);
+
+    if (elsewhere) {
+        copyFileSync(existing.author, join(directory, 'author.p12'));
+        writeFileSync(join(directory, 'author.pw'), existing.password);
+    }
+
     ui.ok('written', directory);
     ui.blank();
 
@@ -184,6 +195,12 @@ const main = async () => {
 
     ui.blank();
     ui.note(`This pair signs for ${devices.length === 1 ? devices[0] : `${devices.length} televisions: ${devices.join(', ')}`}.`);
+
+    // Everything else reads ~/.tizen-certs unless pointed elsewhere, and this pair is elsewhere.
+    if (resolve(directory) !== resolve(certificates.DEFAULT_DIR)) {
+        ui.note(ui.style.dim(`  export TIZEN_AUTHOR_P12=${join(directory, 'author.p12')}`));
+    }
+
     ui.note(ui.style.dim('  npm run package -- --sign                build a widget they can install'));
     ui.note(ui.style.dim(`  npm run certs -- ${ip || '<tv-ip>'} <pin>          let a TV re-sign for itself`));
     ui.blank();

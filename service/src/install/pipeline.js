@@ -131,7 +131,7 @@ const createInstaller = ({ sdb, device, config, resigner, store, log }) => {
 
             sdbSays.info(command);
 
-            const result = await sdb.withSession({}, (session) =>
+            const result = await sdb.withSession({ log: (line) => sdbSays.info(line) }, (session) =>
                 installer.run(session, carried.stagedPath, carried.identity.packageId));
 
             const verdict = String((result && result.output) || '')

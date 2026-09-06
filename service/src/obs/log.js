@@ -72,6 +72,40 @@ const startRecording = (options) => {
     const lines = [];
     let sequence = 0;
 
+    // Whoever wants a line the moment it is written rather than on the next sweep: the television's
+    // own page watches over the socket instead of asking for the tail once a second.
+    const listeners = [];
+    let notifying = false;
+
+    const notify = (written) => {
+        // A listener that logs would come straight back through here; the nested line is still
+        // recorded, it simply does not fan out again.
+        if (notifying || written.length === 0 || listeners.length === 0) return;
+
+        notifying = true;
+
+        try {
+            listeners.slice().forEach((listener) => {
+                try {
+                    listener(written);
+                } catch (e) {
+                    // A watcher that throws must not cost the service its log.
+                }
+            });
+        } finally {
+            notifying = false;
+        }
+    };
+
+    const subscribe = (listener) => {
+        listeners.push(listener);
+
+        return () => {
+            const at = listeners.indexOf(listener);
+            if (at !== -1) listeners.splice(at, 1);
+        };
+    };
+
     // hrtime is in Node 4, which is the oldest runtime this service has to start on.
     const origin = process.hrtime ? process.hrtime() : null;
     const startedWall = Date.now();
@@ -98,7 +132,7 @@ const startRecording = (options) => {
     const record = (level, facility, text) => {
         if (level === 'debug' && !keepDebug) return [];
 
-        return String(text).replace(/[\r\n]+$/, '').split(/\r?\n/).map((one) => {
+        const written = String(text).replace(/[\r\n]+$/, '').split(/\r?\n/).map((one) => {
             const line = {
                 seq: ++sequence,
                 t: elapsed(),
@@ -113,6 +147,10 @@ const startRecording = (options) => {
 
             return line;
         });
+
+        notify(written);
+
+        return written;
     };
 
     const write = (level, facility, values) => {
@@ -161,7 +199,7 @@ const startRecording = (options) => {
         return tally;
     }, {});
 
-    return { log, since, counts, format, uptime: elapsed };
+    return { log, since, subscribe, counts, format, uptime: elapsed };
 };
 
 module.exports = { startRecording, format, Facility, LEVELS, MAX_LINES };

@@ -19,7 +19,8 @@ const CLOSED_BECAUSE = {
     1012: 'the service is restarting'
 };
 
-const attach = ({ server, store, authorise, installer, catalog, updates, relay, refreshDevice, config, protocol, log }) => {
+const attach = ({ server, store, authorise, installer, catalog, updates, relay, refreshDevice,
+    fromLoopback, greeting, recorded, config, protocol, log }) => {
     const { Inbound, Outbound, ErrorCode, ProtocolError } = protocol;
 
     const say = log ? log.on('sock') : null;
@@ -29,8 +30,13 @@ const attach = ({ server, store, authorise, installer, catalog, updates, relay, 
 
     let connected = 0;
 
+    // Everyone the service pushes to unasked. A phone gets what it asks for; the television's own
+    // page asks once and is then told, which is what replaced its second-by-second polling.
+    const watchers = [];
+
     wsServer.on('connection', (socket, request) => {
         let paired = false;
+        let unwatch = null;
 
         const client = host((request && request.socket && request.socket.remoteAddress) ||
             (socket._socket && socket._socket.remoteAddress));
@@ -42,6 +48,11 @@ const attach = ({ server, store, authorise, installer, catalog, updates, relay, 
         socket.on('close', (code, reason) => {
             connected = Math.max(0, connected - 1);
 
+            if (unwatch) unwatch();
+
+            const watching = watchers.indexOf(push);
+            if (watching !== -1) watchers.splice(watching, 1);
+
             if (!say) return;
 
             const why = CLOSED_BECAUSE[code] || (reason ? String(reason) : `code ${code}`);
@@ -52,6 +63,9 @@ const attach = ({ server, store, authorise, installer, catalog, updates, relay, 
         const send = (type, payload) => {
             if (socket.readyState === WebSocket.OPEN) socket.send(protocol.encode(type, payload));
         };
+
+        // Named so `close` can take it back out of `watchers`; `send` itself is fine to hold on to.
+        const push = (type, payload) => send(type, payload);
 
         const sendFailure = (error) => {
             // A coded error is a refusal this service meant to make; only a surprise gets a trace.
@@ -76,6 +90,21 @@ const attach = ({ server, store, authorise, installer, catalog, updates, relay, 
         const sendDeviceState = async () => {
             const state = await refreshDevice();
             send(Outbound.STATE, { ...state, hasCertificates: config.hasCertificates() });
+        };
+
+        // The tail first, from the sequence number the caller already has, then every line as it is
+        // written. A reconnect resumes rather than repeating, and a service that restarted answers
+        // with a lower uptime, which is how the page knows to start its log again.
+        const startWatching = ({ logsSince }) => {
+            if (unwatch) unwatch();
+
+            send(Outbound.LOG, { lines: recorded.since(logsSince), uptime: recorded.uptime() });
+
+            unwatch = recorded.subscribe((lines) => send(Outbound.LOG, { lines, uptime: recorded.uptime() }));
+
+            if (watchers.indexOf(push) === -1) watchers.push(push);
+
+            return sendDeviceState();
         };
 
         const greet = async ({ pin }) => {
@@ -225,6 +254,7 @@ const attach = ({ server, store, authorise, installer, catalog, updates, relay, 
         const handlers = {
             [Inbound.HELLO]: greet,
             [Inbound.GET_STATE]: sendDeviceState,
+            [Inbound.WATCH]: startWatching,
             [Inbound.GET_CATALOG]: listCatalog,
             [Inbound.CHECK_UPDATES]: checkUpdates,
             [Inbound.INSTALL]: runInstall,
@@ -235,7 +265,12 @@ const attach = ({ server, store, authorise, installer, catalog, updates, relay, 
             [Inbound.FORGET_CERTS]: forgetCertificates
         };
 
-        send(Outbound.HELLO, { ok: false, needsPin: true });
+        // The television's own page arrives over loopback, which `GET /pin` already trusts with the
+        // code. Handing it over in the greeting saves that page a request and leaves one path to
+        // authorisation, rather than a second one that skips it.
+        const opening = fromLoopback && fromLoopback(request) && greeting ? greeting() : null;
+
+        send(Outbound.HELLO, { ok: false, needsPin: true, ...(opening || {}) });
 
         socket.on('message', async (raw) => {
             const message = (() => {
@@ -267,7 +302,11 @@ const attach = ({ server, store, authorise, installer, catalog, updates, relay, 
         });
     });
 
-    return wsServer;
+    // Anything the service learns on its own rather than on being asked: the device state sweep is
+    // the only caller today.
+    const broadcast = (type, payload) => watchers.slice().forEach((to) => to(type, payload));
+
+    return { wsServer, broadcast };
 };
 
 module.exports = { attach };
