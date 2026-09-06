@@ -22,10 +22,12 @@ after that.
 
 One command. It carries its own runtime, so nothing has to be installed first.
 
+### Linux/MacOS
 ```sh
 curl -fsSL https://sushydev.github.io/tizen-homebrew/install.sh | sh
 ```
 
+### Windows
 ```powershell
 irm https://sushydev.github.io/tizen-homebrew/install.ps1 | iex
 ```
