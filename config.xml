@@ -53,8 +53,25 @@
     <tizen:profile name="tv-samsung"/>
 
     <!-- The headless half: serves the phone UI and drives SDB over loopback.
-         The id suffix must match what tv.html launches. -->
-    <tizen:service id="GJBBYNLkgP.TizenHomebrewService">
+         The id suffix must match what tv.html launches.
+
+         on-boot brings it up with the television, so a phone can reach it
+         without anyone walking to the set and opening the app; auto-restart
+         puts it back if it faults or the platform reclaims it. Both are
+         documented as platform and partner signed only, and every other line
+         in this file exists to keep the package installable with an ordinary
+         public certificate. A set that ignores them loses nothing that used to
+         work: the app still launches the service itself when it opens.
+         Confirmed on a QE65S93DATXXN carrying a partner distributor pair: after
+         a restart the service was up with no app ever opened. Whether a public
+         package gets them is still untested — if an install starts failing on
+         the security error described above, these two attributes are the first
+         thing to remove.
+
+         The pairing code is kept across restarts because of this: a code
+         regenerated every start would be readable only off the very screen
+         booting the service is meant to avoid. See service/src/config.js. -->
+    <tizen:service id="GJBBYNLkgP.TizenHomebrewService" auto-restart="true" on-boot="true">
         <tizen:content src="service/dist/index.js"/>
         <tizen:name>TizenHomebrewService</tizen:name>
         <tizen:description>Serves the Tizen Homebrew UI and installs packages over loopback SDB.</tizen:description>

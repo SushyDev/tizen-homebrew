@@ -3,6 +3,7 @@ import './app.css';
 import { createStore } from './core/store.js';
 import { mount, delegate } from './core/view.js';
 import { remote, KEY } from './core/remote.js';
+import { connect as openSocket } from './core/socket.js';
 import { sea } from './scene/sea.js';
 import { theme } from './scene/theme.js';
 import { masthead, connect, status, log, overlay, deck, windowOf } from './views/television.js';
@@ -23,7 +24,6 @@ const store = createStore({
     ready: null,
     build: null,
     lines: [],
-    attempts: 0,
     view: 'main',
     from: 0,
     rows: null,
@@ -81,25 +81,9 @@ const channel = theme({
     onState: ({ playing }) => store.update({ themeOn: playing })
 });
 
-const ask = (path) => new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open('GET', BASE + path, true);
-    request.timeout = 8000;
-
-    request.onload = () => {
-        try {
-            resolve(JSON.parse(request.responseText));
-        } catch (e) {
-            reject(new Error(`${path} did not return JSON`));
-        }
-    };
-
-    request.onerror = () => reject(new Error('unreachable'));
-    request.ontimeout = () => reject(new Error('timeout'));
-    request.send();
-});
-
-// Every write route is behind the PIN, which this page reads from /pin over loopback at startup.
+// The one thing left on HTTP: a single shot with no answer worth waiting for. Everything this page
+// used to ask for repeatedly now arrives over the socket instead. The PIN comes from the service's
+// own greeting, which it gives to loopback callers.
 const post = (path) => new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open('POST', BASE + path, true);
@@ -128,14 +112,13 @@ const launchService = () => new Promise((resolve, reject) => {
     );
 });
 
-// Waited on, but never past this: a wedged service must not trap anyone in the app.
-const LEAVE_DEADLINE = 1500;
-
 let leaving = false;
 
-// The service is a separate application that outlives this page, so leaving means asking it to stop
-// as well. The audio is torn down here rather than left to the page going away, because a runtime
-// that keeps the page alive keeps the theme playing over the Tizen home screen.
+// Only this page leaves. The service is a separate application that starts with the television and is
+// meant to outlive every visit to this screen — a phone can reach it with nobody in front of the set,
+// which is the whole point of config.xml's on-boot. The audio is torn down here rather than left to
+// the page going away, because a runtime that keeps the page alive keeps the theme playing over the
+// Tizen home screen.
 const leave = () => {
     if (leaving) return;
 
@@ -145,18 +128,9 @@ const leave = () => {
     }
 
     leaving = true;
+
     channel.stop();
-
-    let gone = false;
-
-    const go = () => {
-        if (gone) return;
-        gone = true;
-        application.exit();
-    };
-
-    window.setTimeout(go, LEAVE_DEADLINE);
-    post('/shutdown').then(go, go);
+    application.exit();
 };
 
 const open = (view) => store.update((state) => {
@@ -291,186 +265,145 @@ keys.focus('restart');
 
 window.addEventListener('resize', remeasure);
 
-const LOG_INTERVAL = 1000;
+const Send = {
+    hello: 'hello',
+    watch: 'watch'
+};
+
+const Receive = {
+    hello: 'hello',
+    state: 'state',
+    log: 'log'
+};
 
 let sinceSeq = 0;
 let lastUptime = 0;
-let logAnswered = false;
-let logMisses = 0;
 
-const watchLog = async () => {
-    try {
-        const { lines, uptime } = await ask(`/logs?since=${sinceSeq}`);
+// Asking the platform to start the service is idempotent — a launch into one already running lands on
+// its onRequest and does nothing — so it is safe to repeat while nothing answers, and repeating is what
+// covers the case a socket cannot tell apart on its own: a service that is not slow but gone.
+const relaunch = () => launchService().then(
+    () => {},
+    (error) => say(`could not launch the service: ${error.message}`, 'err')
+);
 
-        // A clock that went backward means the service restarted, so its sequence starts again from one.
-        if (uptime + 1000 < lastUptime) {
-            sinceSeq = 0;
-            lastUptime = 0;
-            clockOffset = null;
-            say('the service restarted — reading its log from the beginning', 'warn');
-            return;
-        }
+// Twice the greeting: refused first, with the pairing code attached because this page is on loopback and
+// GET /pin has always trusted that, then accepted once the code is handed back. Nothing is typed in here,
+// and the code is kept across restarts, so a reboot does not strand the phone that paired.
+const greeted = (payload) => {
+    if (payload.ok) return link.send(Send.watch, { logsSince: sinceSeq });
 
-        lastUptime = uptime;
-
-        const first = clockOffset === null;
-        clockOffset = uptime - (Date.now() - started);
-
-        if (logMisses >= 3) say('the service is answering again', 'ok');
-
-        logAnswered = true;
-        logMisses = 0;
-
-        if (lines.length > 0) sinceSeq = lines[lines.length - 1].seq;
-
-        append(lines.map((line) => ({
-            t: line.t,
-            facility: line.facility || 'svc',
-            level: line.level || 'info',
-            text: line.text
-        })), first);
-    } catch (failure) {
-        if (!logAnswered) return;
-
-        logMisses += 1;
-        if (logMisses === 3) say(`the service stopped answering its log (${failure.message})`, 'err');
+    if (!payload.pin) {
+        say('the service would not say what its pairing code is', 'err');
+        return;
     }
+
+    const shown = store.get().pin;
+    if (shown && shown !== payload.pin) say('the pairing code changed — this is the new one', 'warn');
+
+    const port = payload.port || PORT;
+    const reachable = payload.addresses && payload.addresses.length;
+
+    store.update({
+        pin: payload.pin,
+        url: reachable ? `http://${payload.addresses[0]}:${port}` : `port ${port}`,
+        build: payload.build || null
+    });
+
+    link.send(Send.hello, { pin: payload.pin });
 };
 
-const watchReadiness = async () => {
-    try {
-        const state = await ask('/state');
-        store.update({ ready: state.sdbReachable });
-    } catch (e) {
-        // The log already says the service is unreachable.
+const logged = ({ lines, uptime }) => {
+    // A clock that went backward means a different process, so its sequence starts again from one.
+    if (uptime + 1000 < lastUptime) {
+        sinceSeq = 0;
+        lastUptime = 0;
+        clockOffset = null;
+
+        say('the service restarted — reading its log from the beginning', 'warn');
+
+        link.send(Send.watch, { logsSince: 0 });
+        return;
     }
 
-    // Re-read every poll: the PIN is regenerated on every service start, so a restart leaves a dead code on
-    // screen.
-    try {
-        const { pin } = await ask('/pin');
+    lastUptime = uptime;
 
-        if (pin && pin !== store.get().pin) {
-            store.update({ pin });
-            say('the service restarted — this is its new pairing code', 'warn');
-        }
-    } catch (e) {
-        // The readiness poll reports a service that has gone away.
-    }
+    const first = clockOffset === null;
+    clockOffset = uptime - (Date.now() - started);
+
+    if (lines.length > 0) sinceSeq = lines[lines.length - 1].seq;
+
+    append(lines.map((line) => ({
+        t: line.t,
+        facility: line.facility || 'svc',
+        level: line.level || 'info',
+        text: line.text
+    })), first);
 };
 
-let readinessTimer = null;
+// Every fourth attempt, which with the socket's backoff is a few seconds apart at first and then every
+// twelve. One launch would not be enough: a restart answers before it exits, so the launch that follows
+// the drop can reach the process on its way out and be swallowed.
+const RELAUNCH_EVERY = 4;
 
-const waitForService = async () => {
-    store.update((state) => ({ attempts: state.attempts + 1 }));
-
-    try {
-        const { pin, addresses } = await ask('/pin');
-
-        store.update({
-            pin,
-            url: addresses && addresses.length ? `http://${addresses[0]}:${PORT}` : `port ${PORT}`
-        });
-
+const changed = (status, attempt) => {
+    if (status === 'connected') {
         say(`the service answered on port ${PORT}`, 'ok');
-
-        ask('/version').then(({ build }) => store.update({ build }), () => {});
-
-        watchReadiness();
-
-        // A restart runs this a second time, and a second interval would double every poll from then on.
-        if (readinessTimer === null) readinessTimer = setInterval(watchReadiness, 5000);
-    } catch (failure) {
-        const { attempts } = store.get();
-
-        if (attempts === 1) say(`the service is not answering yet (${failure.message})`);
-        if (attempts === 12) say('the service is slow to start', 'warn');
-
-        if (attempts === 60) {
-            say(`nothing on port ${PORT} after 30s — the platform can be slow to start it`, 'warn');
-            say('still asking, every three seconds', 'warn');
-        }
-
-        // Slowing down, never stopping: one set took twenty-four seconds to launch its own service.
-        setTimeout(waitForService, attempts < 60 ? 500 : 3000);
-    }
-};
-
-const GONE_DEADLINE = 8000;
-
-const pause = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
-
-// The service answers the restart before it exits, so a launch sent straight away is swallowed by the
-// process that is about to die and nothing comes back.
-const waitForExit = async () => {
-    const until = Date.now() + GONE_DEADLINE;
-
-    while (Date.now() < until) {
-        try {
-            await ask('/version');
-        } catch (e) {
-            return true;
-        }
-
-        await pause(200);
+        store.update({ restarting: false });
+        return;
     }
 
-    return false;
+    // Nothing is known about the television until the service says so again.
+    store.update({ ready: null });
+
+    // attempt 0 is a socket that was open and dropped, which over loopback means the service exited.
+    if (attempt === 0) say('the service went away', 'warn');
+    if (attempt === 1) say('the service is not answering yet — waiting for it');
+    if (attempt === 12) say('the service is slow to start', 'warn');
+    if (attempt === 30) say('still waiting — the platform can be slow to start it', 'warn');
+
+    if (application && attempt % RELAUNCH_EVERY === 0) relaunch();
 };
 
-let restarting = false;
-
-const restart = async () => {
-    if (restarting) return;
+const restart = () => {
+    if (store.get().restarting) return;
 
     if (!application) {
         say('restart: not running on a television', 'warn');
         return;
     }
 
-    restarting = true;
     store.update({ restarting: true });
-
     say('asking the service to restart', 'warn');
 
-    // A cut-short response is the service exiting, which is what was asked for.
-    await post('/restart').catch(() => {});
+    // Nothing waits on the answer: the service replies before it exits, so what says it went is the
+    // socket dropping, and `changed` above takes it from there — including clearing this flag once
+    // something answers again. Only a refusal with a status behind it means nothing is restarting.
+    post('/restart').catch((failure) => {
+        if (failure.message.indexOf('HTTP') !== 0) return;
 
-    const stopped = await waitForExit();
-    if (!stopped) say('the service is still answering — launching it anyway', 'warn');
-
-    // Its log and its PIN both start again, so nothing already on screen describes what comes back.
-    sinceSeq = 0;
-    lastUptime = 0;
-    clockOffset = null;
-    logAnswered = false;
-    logMisses = 0;
-
-    store.update({ pin: null, ready: null, attempts: 0 });
-
-    await launchService().then(
-        () => say('the platform accepted the service launch', 'ok'),
-        (error) => say(`could not launch the service: ${error.message}`, 'err')
-    );
-
-    restarting = false;
-    store.update({ restarting: false });
-
-    waitForService();
+        say(`the service refused the restart (${failure.message})`, 'err');
+        store.update({ restarting: false });
+    });
 };
 
-watchLog();
-setInterval(watchLog, LOG_INTERVAL);
-
-say('asking the platform to start the background service');
-
-if (!application) {
-    say('running off-TV — whatever answers this origin is standing in', 'warn');
-    waitForService();
+// It is usually already up: config.xml starts it with the television. This is for the set that does
+// not honour that, and it lands on a running service's onRequest otherwise.
+if (application) {
+    say('asking the platform to start the background service');
+    relaunch();
 } else {
-    launchService().then(
-        () => say('the platform accepted the service launch', 'ok'),
-        // It may already be running from an earlier launch, so a refusal still polls.
-        (error) => say(`could not launch the service: ${error.message}`, 'err')
-    ).then(waitForService);
+    say('running off-TV — whatever answers this origin is standing in', 'warn');
 }
+
+// On the television the service is its own origin on loopback; off it, whatever is serving this page.
+const link = openSocket({
+    url: application ? `ws://127.0.0.1:${PORT}` : null,
+    onStatus: changed,
+
+    onMessage: (type, payload) => {
+        if (type === Receive.hello) return greeted(payload);
+        if (type === Receive.log) return logged(payload);
+        if (type === Receive.state) return store.update({ ready: payload.sdbReachable });
+    }
+});

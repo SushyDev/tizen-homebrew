@@ -14,17 +14,25 @@ const startedAt = Date.now();
 const lines = [];
 let sequence = 0;
 
+// Whoever asked to be told rather than to ask, keyed by socket so a disconnect takes itself out. The
+// television page watches; the phone never does.
+const watchers = new Map();
+
 const write = (level, facility, text) => {
-    lines.push({
+    const line = {
         seq: ++sequence,
         t: Date.now() - startedAt,
         at: new Date().toISOString(),
         level,
         facility,
         text
-    });
+    };
+
+    lines.push(line);
 
     while (lines.length > 1000) lines.shift();
+
+    watchers.forEach((send) => send('log', { lines: [line], uptime: Date.now() - startedAt }));
 };
 
 const log = ['debug', 'info', 'ok', 'warn', 'err'].reduce((writers, level) => ({
@@ -35,7 +43,7 @@ const log = ['debug', 'info', 'ok', 'warn', 'err'].reduce((writers, level) => ({
 const boot = () => {
     log.info('svc', 'tizen homebrew dev starting');
     log.info('svc', `node ${process.version} on ${process.platform}/${process.arch}, pid ${process.pid}`);
-    log.info('auth', `pairing pin ${PIN} — regenerated every start`);
+    log.info('auth', `pairing pin ${PIN} — kept across restarts, so a reboot does not unpair every phone`);
     log.info('cat', 'origin https://cdn.example.com/homebrew/catalog.json');
     log.info('cfg', 'cache /home/owner/share/homebrewCatalog.json');
     log.info('svc', 'serving the phone UI from /opt/usr/apps/GJBBYNLkgP/res/wgt/ui/dist');
@@ -346,6 +354,17 @@ const conversation = (socket, say) => {
         },
 
         getState: () => send('state', DEVICE),
+
+        watch: ({ logsSince }) => {
+            send('log', {
+                lines: lines.filter((line) => line.seq > (Number(logsSince) || 0)),
+                uptime: Date.now() - startedAt
+            });
+
+            watchers.set(socket, send);
+            send('state', DEVICE);
+        },
+
         getCatalog: () => send('catalog', { entries: listed(checked), stale: false }),
 
         checkUpdates: async ({ id }) => {
@@ -386,7 +405,18 @@ const conversation = (socket, say) => {
             : fail('relayDisabled', 'The command relay is turned off.'))
     };
 
-    send('hello', { ok: false, needsPin: true });
+    // The real service attaches the code only for loopback callers, which is how the television's own
+    // page pairs without anyone typing it. Everything is loopback here, and the phone page reads none of
+    // these extra fields, so it still gets its PIN screen.
+    send('hello', {
+        ok: false,
+        needsPin: true,
+        pin: PIN,
+        port: 8091,
+        addresses: ['192.168.2.9'],
+        url: 'http://192.168.2.9:8091',
+        build: 'dev'
+    });
 
     return async (raw) => {
         const message = (() => {
@@ -475,7 +505,10 @@ const devService = ({ enabled }) => ({
                 if (closed) socket.end();
             });
 
-            socket.on('close', () => log.info('sock', '192.168.2.31 disconnected normally (0 clients)'));
+            socket.on('close', () => {
+                watchers.delete(socket);
+                log.info('sock', '192.168.2.31 disconnected normally (0 clients)');
+            });
             socket.on('error', () => socket.destroy());
         });
 

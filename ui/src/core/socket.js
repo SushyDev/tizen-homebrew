@@ -1,18 +1,27 @@
-const RECONNECT_DELAY = 1500;
+const RETRY_FLOOR = 250;
+const RETRY_CEILING = 3000;
 
-// The socket reconnects on its own, because a TV that briefly drops off the network should not
-// require the phone to be reloaded.
-const connect = ({ onMessage, onStatus }) => {
-    const url = import.meta.env.DEV
+// Nothing here is on a clock. The socket reconnects on its own because a TV that briefly drops off
+// the network should not require the phone to be reloaded — and on the television's own page this is
+// also how it waits for a service that has not finished starting. There is no platform event for
+// "the port is open now", but a refused connection is itself an event, so the only interval is the
+// pause between attempts, which grows to a few seconds and stops the moment one is accepted.
+const connect = ({ url, onMessage, onStatus }) => {
+    const address = url || (import.meta.env.DEV
         ? `ws://${location.host}/socket`
-        : `ws://${location.host}`;
+        : `ws://${location.host}`);
 
     let socket = null;
+    let attempts = 0;
 
     const open = () => {
-        socket = new WebSocket(url);
+        attempts += 1;
+        socket = new WebSocket(address);
 
-        socket.onopen = () => onStatus('connected');
+        socket.onopen = () => {
+            attempts = 0;
+            onStatus('connected');
+        };
 
         socket.onmessage = (event) => {
             try {
@@ -24,9 +33,11 @@ const connect = ({ onMessage, onStatus }) => {
             }
         };
 
+        // A connection that was never accepted closes too, so this is the only retry path either page
+        // needs. The first attempt after a working socket drops is immediate.
         socket.onclose = () => {
-            onStatus('reconnecting');
-            setTimeout(open, RECONNECT_DELAY);
+            onStatus('reconnecting', attempts);
+            setTimeout(open, Math.min(RETRY_CEILING, RETRY_FLOOR * attempts));
         };
 
         socket.onerror = () => {};

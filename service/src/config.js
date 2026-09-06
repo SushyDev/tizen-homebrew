@@ -3,6 +3,8 @@
 const { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync } = require('fs');
 const { homedir } = require('os');
 
+const pin = require('./auth/pin.js');
+
 const CONFIG_DIR = process.env.HOMEBREW_CONFIG_DIR || `${homedir()}/share`;
 const CONFIG_PATH = `${CONFIG_DIR}/homebrewConfig.json`;
 
@@ -10,6 +12,8 @@ const CONFIG_PATH = `${CONFIG_DIR}/homebrewConfig.json`;
 const HANDOFF_PATH = `${CONFIG_DIR}/tmp/sdk_tools/homebrewCerts.json`;
 
 const DEFAULTS = {
+    pin: null,               // the pairing code, minted once and then kept — see pairingPin below
+
     // `{ certificates: [pem], key: pem }` each. PEM, because an ASN.1 parser was a third of the bundle.
     author: null,
     distributor: null,
@@ -41,6 +45,18 @@ function write(config) {
 
 function update(patch) {
     return write(Object.assign(read(), patch));
+}
+
+// The service starts with the television now, so the code has to outlive a restart: one regenerated
+// every start would be readable only off the screen that starting on boot exists to avoid, and every
+// paired phone would be dropped by each reboot. It lives beside the signing keys, which are the more
+// valuable half of this file by a wide margin.
+function pairingPin() {
+    const kept = read().pin;
+
+    if (typeof kept === 'string' && kept.length === pin.DIGITS) return kept;
+
+    return update({ pin: pin.generate() }).pin;
 }
 
 function hasCertificates(duid) {
@@ -104,6 +120,7 @@ module.exports = {
     read,
     write,
     update,
+    pairingPin,
     hasCertificates,
     hasLegacyCertificates,
     adoptHandoff,

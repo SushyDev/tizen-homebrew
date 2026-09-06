@@ -6,6 +6,7 @@
 const Inbound = {
     HELLO: 'hello',                 // { pin }
     GET_STATE: 'getState',          // -
+    WATCH: 'watch',                 // { logsSince? } — push the log and the device state as they change
     GET_CATALOG: 'getCatalog',      // { refresh? }
     CHECK_UPDATES: 'checkUpdates',  // { id? }
     INSTALL: 'install',             // { source: 'catalog'|'github'|'url'|'file', ref }
@@ -17,8 +18,9 @@ const Inbound = {
 };
 
 const Outbound = {
-    HELLO: 'hello',                 // { ok, needsPin }
+    HELLO: 'hello',                 // { ok, needsPin } — plus { pin, port, addresses, url, build } on loopback
     STATE: 'state',                 // DeviceState
+    LOG: 'log',                     // { lines: [LogLine], uptime }
     CATALOG: 'catalog',             // { entries: [CatalogEntry], stale, source }
     PROGRESS: 'progress',           // { phase, detail?, identity? }
     DONE: 'done',                   // { packageId, appId }
@@ -120,6 +122,11 @@ function parse(raw) {
         if (typeof payload.command !== 'string' || !payload.command.trim()) {
             throw ProtocolError(ErrorCode.BAD_MESSAGE, 'relayExec requires a command.');
         }
+    }
+
+    if (msg.type === Inbound.WATCH && 'logsSince' in payload && payload.logsSince !== null &&
+        typeof payload.logsSince !== 'number') {
+        throw ProtocolError(ErrorCode.BAD_MESSAGE, 'watch takes the sequence number to resume from, or nothing.');
     }
 
     if (msg.type === Inbound.SET_RELAY && typeof payload.enabled !== 'boolean') {

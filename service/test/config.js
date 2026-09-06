@@ -75,6 +75,23 @@ check('nothing to adopt is not an error', config.adoptHandoff() === null, 'a mis
         config.hasLegacyCertificates() === true, 'the old shape went unnoticed');
 }
 
+{
+    config.clear();
+
+    const minted = config.pairingPin();
+
+    check('a pairing code is minted when there is none', /^\d{6}$/.test(minted), String(minted));
+
+    check('and then kept, so a service that restarts on boot does not unpair every phone',
+        config.pairingPin() === minted && config.read().pin === minted, `${minted} became ${config.pairingPin()}`);
+
+    config.update({ author: PAIR, distributor: PAIR });
+    config.forgetCertificates();
+
+    check('forgetting the certificates does not take the code with them',
+        config.pairingPin() === minted, 'the code changed when the certificates were cleared');
+}
+
 config.clear();
 
 const failed = results.filter((ok) => !ok).length;
