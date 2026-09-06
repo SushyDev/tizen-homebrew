@@ -79,7 +79,12 @@
 
     <!-- background-support is "disable" so Back actually ends the page. Enabled,
          the runtime keeps it alive in the background and the theme audio plays on
-         over the Tizen home screen. The service above is a separate application,
-         so ui/src/tv.js asks it to exit before this one does. -->
+         over the Tizen home screen. The service above is a separate application
+         and is left running: it starts with the television, and a phone reaches
+         it with nobody in front of the set.
+
+         Home is not deliverable to a page — the platform keeps that key — so
+         ui/src/tv.js ends the page on losing visibility instead, which is the
+         same teardown Back and the exit button run. -->
     <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
 </widget>

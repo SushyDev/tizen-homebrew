@@ -133,6 +133,19 @@ const leave = () => {
     application.exit();
 };
 
+// Home cannot be intercepted: Back is a mandatory key the runtime delivers on its own, and the
+// platform keeps Home for itself — registering it does nothing. What it does do is background the
+// page, and a page that is only hidden goes on playing the theme over the Tizen home screen, which
+// is the thing `background-support="disable"` exists to stop. So losing visibility ends the page
+// the same way the exit button does.
+//
+// It has to happen here and now, in the handler. A hidden page has its timers frozen, so a delayed
+// exit does not run while it is away — it runs on the way back, closing the app in the face of the
+// person who just opened it.
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) leave();
+});
+
 const open = (view) => store.update((state) => {
     const { rows, total } = windowOf({ ...state, view });
 
