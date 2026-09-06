@@ -3,11 +3,12 @@
 // Finding the set, so nobody has to go looking in their router: every Samsung television answers
 // http://<ip>:8001/api/v2/ with its model, and the local /24 is one sweep.
 
+const net = require('net');
 const { networkInterfaces } = require('os');
 const { createInterface } = require('readline');
 
 const ui = require('./ui.js');
-const { describe } = require('./tv.js');
+const { describe, DEVICE_API_PORT } = require('./tv.js');
 
 // A /24's worth in flight at once, so each subnet costs about one timeout rather than several.
 const PROBE_TIMEOUT = 1500;
@@ -65,6 +66,22 @@ const pool = async (items, worker) => {
     return found;
 };
 
+// fetch costs far more than the network does: a /24 asked with it takes ten seconds where the same
+// range knocked on by hand takes one and a half. So the sweep opens a socket at every address and
+// only asks the few that answered what they are.
+const knock = (ip) => new Promise((answered) => {
+    const socket = net.connect({ host: ip, port: DEVICE_API_PORT });
+
+    const settle = (open) => {
+        socket.destroy();
+        answered(open ? ip : null);
+    };
+
+    socket.setTimeout(PROBE_TIMEOUT, () => settle(false));
+    socket.on('connect', () => settle(true));
+    socket.on('error', () => settle(false));
+});
+
 const sweep = async () => {
     const { prefixes, mine } = subnets();
 
@@ -76,10 +93,13 @@ const sweep = async () => {
         return all;
     }, []);
 
-    const televisions = await pool(addresses, async (ip) => {
-        const device = await describe(ip, PROBE_TIMEOUT);
+    // Something else may sit on 8001, so the answer still has to look like a television.
+    const listening = await pool(addresses, knock);
+
+    const televisions = (await Promise.all(listening.map(async (ip) => {
+        const device = await describe(ip);
         return device ? { ip, device } : null;
-    });
+    }))).filter(Boolean);
 
     return {
         prefixes,
