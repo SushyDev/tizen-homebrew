@@ -50,7 +50,8 @@ const main = async () => {
             'Which TV?\n\n' +
             '  npm run full-bootstrap -- <tv-ip>\n\n' +
             '  Find the address in the TV\'s network settings, or check your router.\n' +
-            '  Developer Mode has to be on, with Host PC IP pointed at this machine.'
+            '  Developer Mode has to be on, with Host PC IP pointed at this machine.\n\n' +
+            '  Add --dev for a build whose pairing code is fixed at 000000.'
         );
     }
 
@@ -121,7 +122,9 @@ const main = async () => {
         run('mint.js', ['--duid', duid].concat(passthrough));
     }
 
-    run('package.js', ['--sign']);
+    // Without this a developer build cannot be reached from here at all, and the set comes up with a
+    // minted code that has to be read off its screen.
+    run('package.js', argv.has('--dev') ? ['--sign', '--dev'] : ['--sign']);
 
     run('bootstrap.js', [ip].concat(keepingAuthor && !argv.has('--replace') ? [] : ['--replace']));
 
