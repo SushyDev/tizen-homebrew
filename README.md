@@ -34,10 +34,12 @@ npm install
 npm run full-bootstrap -- <tv-ip>
 ```
 
-It asks the TV which device it is, mints a Samsung certificate bound to it (a
-browser opens — sign in), then builds, signs, installs and opens the app. No
-Tizen Studio needed. The certificate is yours — your own Samsung account,
-public level, nothing shared — and lands in `~/.tizen-certs`.
+It asks the TV which device it is, mints a Samsung Partner certificate bound to
+it (a browser opens — sign in), then builds, signs, installs and opens the app.
+No Tizen Studio needed. The certificate is yours — your own Samsung account,
+nothing shared — and lands in `~/.tizen-certs`. Add `--public` for a public one
+instead, which signs and installs the same but does not carry the partner-only
+on-boot service.
 
 It also leaves the certificates on the TV, so from the first boot it re-signs
 whatever it installs — including packages built by other people.
@@ -167,8 +169,8 @@ npm run package && npm run push -- <tv-ip> <pin>
 
 | | |
 | --- | --- |
-| `npm run full-bootstrap -- <ip>` | Certificate, build, install — the whole setup |
-| `npm run mint -- <ip> [pin]` | Certificate only; adds this TV to the pair you have |
+| `npm run full-bootstrap -- <ip>` | Partner certificate, build, install — the whole setup (`--public` overrides) |
+| `npm run mint -- <ip> [pin]` | Partner certificate only; adds this TV to the pair you have (`--public` overrides) |
 | `npm run package` | Build a `.wgt` signed by nobody — what a release carries |
 | `npm run package -- --sign` | The same, signed for this machine's TV — what sdb needs |
 | `npm run bootstrap -- <ip>` | Install over sdb (needs Host PC IP pointed here) |
