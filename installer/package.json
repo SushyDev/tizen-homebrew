@@ -1,0 +1,17 @@
+{
+  "name": "tizen-homebrew-installer",
+  "version": "0.1.8",
+  "private": true,
+  "type": "module",
+  "description": "Single-binary guided installer: finds the TV, mints a certificate, installs Tizen Homebrew.",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "test": "bun test",
+    "natives": "npm install --force --no-save @opentui/core-darwin-arm64@0.5.10 @opentui/core-darwin-x64@0.5.10 @opentui/core-linux-x64@0.5.10 @opentui/core-linux-arm64@0.5.10 @opentui/core-linux-x64-musl@0.5.10 @opentui/core-linux-arm64-musl@0.5.10 @opentui/core-win32-x64@0.5.10 @opentui/core-win32-arm64@0.5.10",
+    "build": "bun build --compile --minify src/main.ts --outfile dist/tizen-homebrew"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.5.10"
+  }
+}

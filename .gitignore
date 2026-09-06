@@ -17,3 +17,6 @@ release/
 
 # A read-only checkout of Samsung/lwnode, not part of the build.
 lwnode/
+
+# The compiled installer, which is a release artifact rather than source.
+installer/dist/
