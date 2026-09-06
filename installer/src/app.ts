@@ -36,10 +36,18 @@ const screen = new BoxRenderable(renderer, {
 renderer.root.add(screen);
 
 let picker: SelectRenderable | null = null;
+let progress: TextRenderable | null = null;
 
+// remove() wants the renderable itself, and each one holds native memory, so it is destroyed
+// rather than dropped: these screens are redrawn often enough for the difference to matter.
 const clear = () => {
-    for (const child of [...screen.getChildren()]) screen.remove(child.id);
+    for (const child of [...screen.getChildren()]) {
+        screen.remove(child);
+        child.destroyRecursively();
+    }
+
     picker = null;
+    progress = null;
 };
 
 // Every screen is a list of lines, so there is one way to draw and one place to change it.
@@ -57,6 +65,21 @@ const heading = (text: string) => t`${bold(fg(ACCENT)(text))}`;
 const quiet = (text: string) => t`${dim(text)}`;
 const failure = (text: string) => t`${fg(BAD)(text)}`;
 const success = (text: string) => t`${fg(GOOD)(text)}`;
+
+const showProgress = (label: string, got: number, total: number) => {
+    const text = `  ${bar(got, total)}`;
+
+    if (!progress) {
+        show([" ", quiet(`  ${label}`), " ", text]);
+        progress = screen.getChildren()[3] as TextRenderable;
+        return;
+    }
+
+    if (progress.content?.toString() === text) return;
+
+    progress.content = text;
+    renderer.requestRender();
+};
 
 const bar = (got: number, total: number, width = 32) => {
     const done = total > 0 ? Math.min(1, got / total) : 0;
@@ -231,9 +254,7 @@ const mint = async (duid: string) => {
 const fetchWidget = async () => {
     show(["", quiet("  fetching the widget...")]);
 
-    return work.widget(local, (got, total) => {
-        show(["", quiet("  fetching the widget"), "", `  ${bar(got, total)}`]);
-    });
+    return work.widget(local, (got, total) => showProgress("fetching the widget", got, total));
 };
 
 const installIt = async (tv: work.Television, wgt: Buffer, pair: work.Pair) => {
@@ -245,7 +266,7 @@ const installIt = async (tv: work.Television, wgt: Buffer, pair: work.Pair) => {
     show(["", quiet("  installing...")]);
 
     return work.install(tv.ip, signed, pair, primary, {
-        uploading: (sent, total) => show(["", quiet("  installing"), "", `  ${bar(sent, total)}`])
+        uploading: (sent, total) => showProgress("installing", sent, total)
     });
 };
 

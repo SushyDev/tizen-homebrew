@@ -89,3 +89,69 @@ jobs:
           name: tizen-homebrew-widget
           path: ${{ steps.widget.outputs.path }}
           if-no-files-found: error
+
+  # The installer is what a person with nothing on their machine runs. Bun cross-compiles every
+  # target from one runner, so this is a single job rather than a matrix.
+  installers:
+    name: Build the installers
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: oven-sh/setup-bun@v2
+
+      # The installer bundles this repository's own modules, and they bring jszip, tizen and forge.
+      - name: Install
+        run: npm ci
+
+      - name: Install the installer's dependencies
+        working-directory: installer
+        run: bun install
+
+      # Bundling resolves every platform's native import, so all of them have to be present even
+      # though one runner is building. bun install honours os/cpu and skips them; npm --force does not.
+      - name: Fetch every platform's renderer
+        working-directory: installer
+        run: npm run natives
+
+      - name: Build
+        working-directory: installer
+        run: |
+          set -eu
+          mkdir -p dist
+
+          build() {
+            bun build --compile --minify --target="$1" src/main.ts --outfile "dist/$2"
+          }
+
+          build bun-darwin-arm64  tizen-homebrew-installer-macos-arm64
+          build bun-darwin-x64    tizen-homebrew-installer-macos-x64
+          build bun-linux-x64     tizen-homebrew-installer-linux-x64
+          build bun-linux-arm64   tizen-homebrew-installer-linux-arm64
+          build bun-windows-x64   tizen-homebrew-installer-windows-x64
+
+          ls -la dist
+
+      - name: Attach them to the draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: installer/dist/tizen-homebrew-installer-*
+          fail_on_unmatched_files: true
+
+      - name: Upload them as artifacts
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: tizen-homebrew-installers
+          path: installer/dist/tizen-homebrew-installer-*
+          if-no-files-found: error

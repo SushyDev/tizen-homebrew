@@ -45,6 +45,26 @@ test("the picker lists a television with its address and mode", async () => {
     expect(shown).toContain("developer mode OFF");
 });
 
+// Every screen after the first tears the previous one down, and that path had no test at all: the
+// installer fell over on the very first Enter because remove() was being handed an id.
+test("moving from one screen to the next tears the first one down", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({ width: 90, height: 30 });
+
+    const app = createApp(renderer, { wgt: "unused", onFinish: () => {} });
+
+    app.intro();
+    await new Promise((ready) => setTimeout(ready, 60));
+    await renderOnce();
+
+    app.pick([{ ip: "192.168.1.29", name: "65\" OLED", model: "QE65S93DATXXN", developerOn: true }]);
+    await renderOnce();
+
+    const shown = captureCharFrame();
+
+    expect(shown).toContain("Found one television");
+    expect(shown).not.toContain("Restart the television");
+});
+
 test("the last screen asks for the setting to be put back", async () => {
     const shown = await frame((app) => {
         app.done({ ip: "192.168.1.29", name: "65\" OLED", model: "QE65S93DATXXN", developerOn: true }, "0.1.8");
