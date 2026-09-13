@@ -99,7 +99,7 @@ const start = () => {
 
     if (relay.enabled) log.on(Facility.RELAY).warn('the command relay is ON from stored configuration');
 
-    // Loaded on first use so a television that never installs anything does not parse node-forge.
+    // Loaded on first use, so a television that never installs anything never loads the signer.
     const resigner = async () => {
         const { resign } = require('./install/resign.js');
 

@@ -1,11 +1,13 @@
 'use strict';
 
-const { existsSync, statSync } = require('fs');
+const { existsSync } = require('fs');
 const { join } = require('path');
 
 const ui = require('./ui.js');
 const { load, CONFIG_PATH, ROOT } = require('./config.js');
 const certificates = require('./certificates.js');
+const authority = require('../sdk/authority.js');
+const x509 = require('../sdk/x509.js');
 
 const checks = [];
 
@@ -19,8 +21,6 @@ function check(name, fn) {
     }
 }
 
-const { which } = require('./which.js');
-
 check('Node.js >= 20', () => {
     const major = Number(process.versions.node.split('.')[0]);
     if (major < 20) {
@@ -33,7 +33,7 @@ check('dependencies installed', () => {
     if (!existsSync(join(ROOT, 'node_modules'))) {
         throw new Error('No node_modules. Run: npm install');
     }
-    const probes = ['vite', 'rolldown', 'ws', 'acorn', 'eslint'];
+    const probes = ['vite', 'rolldown', 'ws', 'acorn', 'eslint', 'jszip'];
     const missing = probes.filter((name) => !existsSync(join(ROOT, 'node_modules', name)));
     if (missing.length) {
         throw new Error(`Missing ${missing.join(', ')}. Run: npm install`);
@@ -49,13 +49,17 @@ check('tizen.config.json', () => {
     return { detail: `version ${config.version}` };
 });
 
-check('tizenjs (packaging only)', () => {
-    const found = which('tizenjs');
-    if (!found) {
-        throw new Error('Not found, and it should ship as a dependency. Run: npm install');
+check('signing authorities bundled', () => {
+    const lapsed = ['author', 'Public', 'Partner']
+        .map((which) => (which === 'author' ? authority.authorCa() : authority.distributorCa(which)))
+        .map((pem) => ({ name: x509.describe(pem).subject, days: x509.expiresIn(pem) }))
+        .filter((entry) => entry.days <= 0);
+
+    if (lapsed.length) {
+        throw new Error(`${lapsed.map((entry) => entry.name).join(', ')} expired. Run: npm run authority`);
     }
-    const bundled = found.indexOf(join(ROOT, 'node_modules')) === 0;
-    return { detail: bundled ? 'bundled dependency' : found };
+
+    return { detail: 'Samsung VD author, public and partner' };
 });
 
 check('signing certificate (packaging only)', () => {
@@ -81,7 +85,18 @@ check('signing certificate (packaging only)', () => {
         );
     }
 
-    return { detail: `author ${statSync(p12).size}B + distributor ${statSync(distributor).size}B` };
+    const devices = certificates.devicesIn(distributor, found.distributorPassword);
+    const days = certificates.expiryOf(p12, found.password);
+
+    if (days !== null && days <= 0) {
+        throw new Error('The author certificate has expired — packages signed with it are refused at install.');
+    }
+
+    const covering = devices.length ? devices.join(', ') : 'no television — the pair names none';
+
+    return {
+        detail: `${covering}${days === null ? '' : ` · ${days} days left`}`
+    };
 });
 
 ui.heading('doctor', CONFIG_PATH.replace(`${ROOT}/`, ''));

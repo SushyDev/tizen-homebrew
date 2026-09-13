@@ -7,6 +7,7 @@ const { need, runSync, npm } = require('./which.js');
 // Lint first: `node --check` only validates syntax, so an undeclared variable reaches runtime and
 // fails on whichever machine hits that line first.
 const SUITES = [
+    { name: 'sdk', workspace: 'sdk' },
     { name: 'service', workspace: 'service' }
 ];
 

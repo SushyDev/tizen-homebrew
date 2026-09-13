@@ -6,19 +6,8 @@
 //
 // Old signatures are dropped rather than amended: every file is digested afresh, signed as the
 // author, then as the distributor over the author's signature, which is the order the format wants.
-//
-// install/signature.js is the `tizen` CLI's own signer taking PEM instead of a PKCS#12, including
-// the `%2F` in its reference URIs, which looks like a bug and is what a television accepts.
 
-const JSZip = require('jszip');
-const Signature = require('./signature.js');
-
-const SIGNATURE_FILE = /^(author-signature\.xml|signature\d*\.xml)$/i;
-
-// A widget names itself in config.xml and a native or .NET package in tizen-manifest.xml.
-// Signing treats both the same — every file but the signatures is hashed — so the manifest
-// is only ever asked for as proof the archive is a Tizen package at all.
-const MANIFESTS = ['config.xml', 'tizen-manifest.xml'];
+const packaging = require('../../../sdk/packaging.js');
 
 const refuse = (message) => Object.assign(new Error(message), { code: 'resignFailed' });
 
@@ -52,49 +41,17 @@ const devicesOf = (certificates) => {
 const deviceOf = (certificates) => devicesOf(certificates)[0] || null;
 
 const resign = async (archive, certificates) => {
-    const refuse = (message) => Object.assign(new Error(message), { code: 'resignFailed' });
+    const pair = openPair(certificates);
 
-    // The URIs are percent-encoded, so a separator becomes `%2F` and is decoded back on the way out.
-    const contentsOf = async (zip) => {
-        const named = await Promise.all(Object.keys(zip.files)
-            .filter((name) => !zip.files[name].dir && !SIGNATURE_FILE.test(name))
-            .map(async (name) => ({
-                uri: encodeURIComponent(name),
-                data: await zip.files[name].async('nodebuffer')
-            })));
-
-        if (!named.some((file) => MANIFESTS.indexOf(decodeURIComponent(file.uri)) !== -1)) {
-            throw refuse('That package has no config.xml or tizen-manifest.xml, so it is not a Tizen package.');
-        }
-
-        return named;
-    };
-
-    const repack = async (files) => {
-        const zip = files.reduce((out, file) => out.file(decodeURIComponent(file.uri), file.data), new JSZip());
-
-        return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
-    };
-
-    const { author, distributor } = openPair(certificates);
-
-    const zip = await JSZip.loadAsync(archive).catch(() => {
-        throw refuse('That file is not a readable package — a .wgt is a zip, and this one would not open.');
+    const done = await packaging.resign(archive, pair).catch((error) => {
+        throw refuse(error.message);
     });
 
-    const contents = await contentsOf(zip);
-
-    // Counted first: `Signature.sign` unshifts its own output into the array it is given.
-    const digested = contents.length;
-
-    const authored = await new Signature('AuthorSignature', contents).sign(author);
-    const signed = await new Signature('DistributorSignature', authored).sign(distributor);
-
     return {
-        archive: await repack(signed),
+        archive: done.archive,
         device: deviceOf(certificates),
-        files: digested
+        files: done.files
     };
 };
 
-module.exports = { resign, openPair, deviceOf, devicesOf, SIGNATURE_FILE };
+module.exports = { resign, openPair, deviceOf, devicesOf, SIGNATURE_FILE: packaging.SIGNATURE_FILE };

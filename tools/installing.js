@@ -11,6 +11,7 @@ const JSZip = require('jszip');
 
 const sdb = require('../service/src/tv/sdb.js');
 const verdicts = require('../service/src/install/verdicts.js');
+const { idsIn, manifestIn } = require('../sdk/packaging.js');
 
 const STAGING_DIR = '/home/owner/share/tmp/sdk_tools';
 
@@ -44,25 +45,6 @@ const isSigned = async (buffer) => {
     } catch (e) {
         return false;
     }
-};
-
-// Both ids come out of config.xml, which is inside the package the caller already holds.
-const idsIn = (manifest) => {
-    const packageId = /<tizen:application\b[^>]*\bpackage="([^"]+)"/.exec(manifest);
-    const appId = /<tizen:application\b[^>]*\bid="([^"]+)"/.exec(manifest);
-
-    if (!packageId || !appId) throw friendly('That package has no readable <tizen:application> ids.');
-
-    return { packageId: packageId[1], appId: appId[1] };
-};
-
-const manifestIn = async (buffer) => {
-    const zip = await JSZip.loadAsync(buffer).catch(() => null);
-    const file = zip && zip.files['config.xml'];
-
-    if (!file) throw friendly('That package holds no config.xml, so it is not a Tizen widget.');
-
-    return file.async('string');
 };
 
 const whenOpen = (stream) => new Promise((resolve, reject) => {

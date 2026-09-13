@@ -185,6 +185,7 @@ npm run package && npm run push -- <tv-ip> <pin>
 | `npm run duid -- <ip> [pin]` | Print the device id a certificate binds to |
 | `npm run repl -- <ip>` | A prompt inside the running service — developer builds only |
 | `npm run doctor` | Check prerequisites when something looks wrong |
+| `npm run authority` | Refresh the bundled Samsung authorities, if one is ever rotated |
 
 `mint` `certs` `duid` `push` all work with the TV pinned to `127.0.0.1`, given
 the PIN. `bootstrap` cannot: it needs the sdbd a pinned set stops answering.
@@ -303,10 +304,16 @@ npm test             # lint, protocol, PIN gate, install pipeline, re-signing
 `/preview.html`. With no TV around `ui/dev/service.js` answers, real protocol
 over a real WebSocket; `HOMEBREW_TV=<tv-ip> npm run dev` points it at hardware.
 
+Certificates, signing and packaging are [`sdk/`](sdk/), written here rather than
+taken from a dependency: it mints against Samsung's certificate authority, reads
+and writes PKCS#12, and signs a `.wgt`, with no Tizen Studio and nothing outside
+Node beyond `jszip`. Its own README says what it does and where it differs from
+what came before.
+
 The installer is a separate program in [`installer/`](installer/): Bun and
-OpenTUI, compiled to one binary per platform. It calls `tools/` and `service/`
-directly rather than reimplementing them, so the sdb client and the re-signer
-have one implementation each.
+OpenTUI, compiled to one binary per platform. It calls `sdk/`, `tools/` and
+`service/` directly rather than reimplementing them, so the sdb client and the
+re-signer have one implementation each.
 
 ```sh
 cd installer && bun install && npm run natives   # every platform's renderer
@@ -323,6 +330,9 @@ bun test
 | `service/src/main.js` | Routes, and what the service is |
 | `service/src/install/pipeline.js` | Install, six named steps |
 | `service/src/install/resign.js` | Re-signing for this television |
+| `sdk/samsung.js` | The three endpoints that issue a certificate pair |
+| `sdk/pkcs12.js` | Reading and writing a `.p12`, without node-forge |
+| `sdk/signing.js` | The two XML signatures a package carries |
 | `service/src/install/updates.js` | What is installed, and what has been released since |
 | `service/src/install/versions.js` | Semver, to the extent a release tag has one |
 | `service/src/tv/sdb.js` | Loopback sdb with real timeouts |

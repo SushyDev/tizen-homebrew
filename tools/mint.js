@@ -95,6 +95,9 @@ const main = async () => {
     minting.write(directory, minted, keeping, password, existing);
 
     ui.ok('written', directory);
+    ui.info('profile', minted.profileFrom === 'samsung'
+        ? 'device-profile.xml, as Samsung issued it'
+        : 'device-profile.xml, holding the distributor certificate — Samsung served no profile');
     ui.blank();
 
     ui.note(keeping

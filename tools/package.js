@@ -1,22 +1,19 @@
 'use strict';
 
 const { execFileSync } = require('child_process');
-const {
-    existsSync, mkdirSync, statSync, rmSync, cpSync, readdirSync, readFileSync, writeFileSync
-} = require('fs');
-const { join, dirname, relative, sep } = require('path');
-
-const JSZip = require('jszip');
+const { existsSync, mkdirSync, statSync, rmSync, cpSync, readFileSync, writeFileSync } = require('fs');
+const { join, dirname } = require('path');
 
 const ui = require('./ui.js');
 const { load, ROOT } = require('./config.js');
-const { which, runSync } = require('./which.js');
 const certificates = require('./certificates.js');
+const packaging = require('../sdk/packaging.js');
+const staged = require('../sdk/staging.js');
 
 const DEVELOPER_MARK = 'DEVELOPER BUILD — pin fixed at';
 
-// tizenjs's --ignore matches basenames only, so it cannot express "keep service/dist/index.js but
-// drop service/index.js". Staging an allowlist instead makes the package contents exact.
+// An allowlist staged into an empty directory, so the package holds exactly these and nothing that
+// happened to be lying beside them.
 const APP = {
     output: 'release/homebrew.wgt',
     include: [
@@ -33,18 +30,9 @@ function friendly(message) {
     return error;
 }
 
-// Left to itself tizenjs signs with the stock Tizen public distributor certificate, which expired
-// in October 2022 and which no retail Samsung set ever trusted — the package builds and is refused
-// at install with "Invalid certificate chain".
+// The stock Tizen public distributor certificate expired in October 2022 and no retail Samsung set
+// ever trusted it, so an unsigned build is the only alternative to a minted pair.
 function checkPrerequisites() {
-    const tizenjs = which('tizenjs');
-    if (!tizenjs) {
-        throw friendly(
-            'tizenjs was not found. It ships as a dependency, so this usually\n' +
-            '  means the install is incomplete. Run: npm install'
-        );
-    }
-
     const found = certificates.locate();
     const absent = certificates.missing(found);
 
@@ -54,28 +42,26 @@ function checkPrerequisites() {
         );
     }
 
-    const p12 = found.author;
-    const password = found.password;
-
-    if (!existsSync(p12)) {
-        throw friendly(`TIZEN_AUTHOR_P12 points at a file that does not exist:\n  ${p12}`);
-    }
-
-    const distributor = found.distributor;
-
-    const distributorPassword = found.distributorPassword;
-
-    if (!existsSync(distributor)) {
+    if (!existsSync(found.distributor)) {
         throw friendly(
             'No distributor certificate, and the stock Tizen one does not work:\n' +
             '  a Samsung TV rejects it at install, so this cannot be skipped.\n\n' +
-            `  Looked for:  ${distributor}\n\n  ${certificates.howToMint()}\n\n` +
+            `  Looked for:  ${found.distributor}\n\n  ${certificates.howToMint()}\n\n` +
             '  That writes author.p12 and distributor.p12 side by side. Point\n' +
             '  TIZEN_AUTHOR_P12 at the author, or set TIZEN_DISTRIBUTOR_P12 explicitly.'
         );
     }
 
-    return { p12, password, distributor, distributorPassword, tizenjs };
+    try {
+        return {
+            author: certificates.asPem(readFileSync(found.author), found.password),
+            distributor: certificates.asPem(readFileSync(found.distributor), found.distributorPassword),
+            devices: certificates.devicesIn(found.distributor, found.distributorPassword),
+            expiresIn: certificates.expiryOf(found.author, found.password)
+        };
+    } catch (e) {
+        throw friendly(`Cannot read the signing pair:\n\n  ${e.message}`);
+    }
 }
 
 function stageContents(staging) {
@@ -93,37 +79,10 @@ function stageContents(staging) {
     });
 }
 
-function signWith(certificate, staging, outPath) {
-    try {
-        runSync(certificate.tizenjs, [
-            'build', '.',
-            '-t', 'wgt',
-            '-o', outPath,
-            '--author', certificate.p12,
-            '--authorPwd', certificate.password,
-            '--distributor', certificate.distributor,
-            '--distributorPwd', certificate.distributorPassword
-        ], { cwd: staging, stdio: 'pipe', encoding: 'utf8' });
-    } catch (e) {
-        const output = `${e.stdout || ''}${e.stderr || ''}`.trim();
-        throw friendly(`Packaging failed.\n\n${output || e.message}`);
-    }
-}
+async function writePackage(pair, directory, outPath) {
+    const files = staged.contentsOf(directory);
 
-// A .wgt is a zip, and all tizenjs adds beyond one is the pair of signature files. Same library and
-// same walk, so an unsigned package differs from a signed one in exactly two entries.
-async function zipUnsigned(staging, outPath) {
-    const zip = new JSZip();
-
-    (function add(directory) {
-        readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
-            const path = join(directory, entry.name);
-            if (entry.isDirectory()) return add(path);
-            zip.file(relative(staging, path).split(sep).join('/'), readFileSync(path));
-        });
-    })(staging);
-
-    writeFileSync(outPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
+    writeFileSync(outPath, pair ? await packaging.build(files, pair) : await packaging.pack(files));
 }
 
 async function packageApp(certificate) {
@@ -137,8 +96,7 @@ async function packageApp(certificate) {
     const started = Date.now();
     try {
         stageContents(staging);
-        if (certificate) signWith(certificate, staging, outPath);
-        else await zipUnsigned(staging, outPath);
+        await writePackage(certificate, staging, outPath);
     } finally {
         rmSync(staging, { recursive: true, force: true });
     }
@@ -164,6 +122,13 @@ async function main() {
     const certificate = sign ? checkPrerequisites() : null;
 
     ui.heading('package', `v${config.version}${sign ? '' : ' unsigned'}`);
+
+    if (certificate && certificate.expiresIn !== null && certificate.expiresIn < 30) {
+        ui.warn(certificate.expiresIn > 0
+            ? `the author certificate expires in ${certificate.expiresIn} days — mint again before it does`
+            : 'the author certificate has expired: packages signed with it are refused at install');
+    }
+
     ui.note(ui.style.dim('  building first...'));
     execFileSync(process.execPath, [join(__dirname, 'build.js')], { cwd: ROOT, stdio: 'inherit' });
 
@@ -180,7 +145,9 @@ async function main() {
 
     ui.blank();
     if (sign) {
-        ui.note('Packaged.');
+        ui.note(certificate.devices.length
+            ? `Packaged, signed for ${certificate.devices.join(', ')}.`
+            : 'Packaged.');
         ui.note(ui.style.dim('Install with `npm run bootstrap -- <tv-ip>`, or sdb install release/homebrew.wgt'));
     } else {
         ui.note('Packaged, signed by nobody.');

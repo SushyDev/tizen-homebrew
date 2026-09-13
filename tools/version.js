@@ -8,6 +8,7 @@ const { ROOT, CONFIG_PATH } = require('./config.js');
 
 const PACKAGE_FILES = [
     'package.json',
+    'sdk/package.json',
     'service/package.json',
     'ui/package.json'
 ];

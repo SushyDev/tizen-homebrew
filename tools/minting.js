@@ -3,12 +3,14 @@
 // Talking to Samsung, without the command around it. `mint` is the CLI; the standalone installer
 // runs the same two steps between a discovery menu and an install.
 //
-// `tizenjs create-samsung-cert` cannot do this today — it reads Samsung's authorization code as an
-// access token — so this serves the `check.do` redirect on localhost and calls the creator directly.
+// The sign-in lives here rather than in the sdk because it needs a browser and a port; everything
+// past the access token is protocol, and that is `sdk/samsung.js`.
 
 const { createServer } = require('http');
 const { writeFileSync, copyFileSync, mkdirSync } = require('fs');
 const { join, dirname, resolve } = require('path');
+
+const samsung = require('../sdk/samsung.js');
 
 // The port registered in the redirect_uri Samsung sends the browser back to.
 const CALLBACK_PORT = 4794;
@@ -66,39 +68,36 @@ const signIn = () => new Promise((resolve_, reject) => {
 // certificate is kept where there is one, because Tizen refuses to update across a changed one and
 // recovering needs sdb.
 const mint = async (account, authorInfo, devices, keeping) => {
-    const { SamsungCertificateCreator } = require('tizen');
-    const creator = new SamsungCertificateCreator();
+    const author = keeping ? null : await samsung.authorPair(account, {
+        name: authorInfo.name,
+        password: authorInfo.password
+    });
 
-    // Only the distributor names devices, and the two certificates are independent.
-    const distributorOnly = async () => {
-        await creator._downloadVDCertificates();
+    const distributor = await samsung.distributorPair(account, {
+        email: authorInfo.email,
+        password: authorInfo.password,
+        level: authorInfo.privilegeLevel,
+        devices
+    });
 
-        const request = creator._generateDistributorCert(authorInfo, devices);
-
-        const profile = await creator._fetchDistributorCert(account, authorInfo, request);
-        const issued = await creator._fetchDistributorCert(account, authorInfo, request);
-
-        return {
-            distributorCert: await creator._generateDistributorPKCS12(request, issued, authorInfo),
-            distributorXML: profile
-        };
+    return {
+        authorCert: author && author.p12,
+        distributorCert: distributor.p12,
+        distributorXML: distributor.profile,
+        profileFrom: distributor.profileFrom,
+        devices
     };
-
-    return (keeping ? distributorOnly() : creator.createCertificate(authorInfo, account, devices))
-        .catch((error) => {
-            throw friendly(`Samsung refused to issue the certificate:\n\n  ${error.message}`);
-        });
 };
 
 // A kept author lives beside the pair it came with, so an output elsewhere takes a copy and stands alone.
 const write = (directory, minted, keeping, password, existing) => {
     mkdirSync(directory, { recursive: true });
 
-    writeFileSync(join(directory, 'distributor.p12'), Buffer.from(minted.distributorCert, 'binary'));
+    writeFileSync(join(directory, 'distributor.p12'), minted.distributorCert);
     writeFileSync(join(directory, 'device-profile.xml'), minted.distributorXML);
 
     if (!keeping) {
-        writeFileSync(join(directory, 'author.p12'), Buffer.from(minted.authorCert, 'binary'));
+        writeFileSync(join(directory, 'author.p12'), minted.authorCert);
         writeFileSync(join(directory, 'author.pw'), password);
         return;
     }
