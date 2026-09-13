@@ -1,0 +1,13 @@
+{
+  "name": "tizen-homebrew-sdk",
+  "version": "0.1.10",
+  "description": "Certificates, signing and packaging for Tizen, with no Tizen Studio and nothing beyond jszip.",
+  "main": "index.js",
+  "license": "GPL-3.0-only",
+  "dependencies": {
+    "jszip": "^3.10.1"
+  },
+  "scripts": {
+    "test": "node test/der.js && node test/rc2.js && node test/kdf.js && node test/pkcs12.js && node test/pkcs10.js && node test/x509.js && node test/signing.js && node test/packaging.js && node test/samsung.js"
+  }
+}

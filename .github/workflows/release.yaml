@@ -106,7 +106,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
-      # The installer bundles this repository's own modules, and they bring jszip, tizen and forge.
+      # The installer bundles this repository's own modules, and they bring jszip.
       - name: Install
         run: npm ci
 

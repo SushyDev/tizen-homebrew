@@ -1,12 +1,12 @@
 'use strict';
 
-const forge = require('node-forge');
 const JSZip = require('jszip');
 const { mkdtempSync } = require('fs');
 const { tmpdir } = require('os');
 
 const { resign, openPair, deviceOf, devicesOf } = require('../src/install/resign.js');
-const { asPem } = require('../../tools/certificates.js');
+const pkcs12 = require('../../sdk/pkcs12.js');
+const signers = require('../../sdk/test/fixtures/signers.js');
 const fixture = require('./fixture.js');
 
 const results = [];
@@ -17,38 +17,21 @@ const check = (name, ok, detail) => {
 
 const PASSWORD = 'test-password';
 
-const mint = (...devices) => {
-    const certificate = (subject) => {
-        const keys = forge.pki.rsa.generateKeyPair(1024);
-        const cert = forge.pki.createCertificate();
+// The devices a pair covers are recorded beside it rather than read out of the certificate, so the
+// two committed signers stand in for any pair; only the names change from case to case.
+const mint = (...devices) => ({
+    author: pkcs12.read(signers.forgeSigner(), PASSWORD),
+    distributor: pkcs12.read(signers.forgeSigner(), PASSWORD),
+    certDuid: devices[0] || null,
+    certDuids: devices
+});
 
-        cert.publicKey = keys.publicKey;
-        cert.serialNumber = '01';
-        cert.validity.notBefore = new Date();
-        cert.validity.notAfter = new Date(Date.now() + 86400000);
-
-        const name = [{ name: 'commonName', value: subject }];
-        cert.setSubject(name);
-        cert.setIssuer(name);
-
-        cert.setExtensions([{
-            name: 'subjectAltName',
-            altNames: devices.map((device) => ({ type: 6, value: `URN:tizen:deviceid=${device}` }))
-        }]);
-        cert.sign(keys.privateKey, forge.md.sha256.create());
-
-        const asn1 = forge.pkcs12.toPkcs12Asn1(keys.privateKey, [cert], PASSWORD);
-
-        return asPem(Buffer.from(forge.asn1.toDer(asn1).getBytes(), 'binary'), PASSWORD);
-    };
-
-    return {
-        author: certificate('test author'),
-        distributor: certificate('test distributor'),
-        certDuid: devices[0] || null,
-        certDuids: devices
-    };
-};
+const somebodyElse = (...devices) => ({
+    author: pkcs12.read(signers.otherSigner(), PASSWORD),
+    distributor: pkcs12.read(signers.otherSigner(), PASSWORD),
+    certDuid: devices[0] || null,
+    certDuids: devices
+});
 
 const namesInside = async (archive) => {
     const zip = await JSZip.loadAsync(archive);
@@ -73,7 +56,7 @@ const run = async () => {
     }
 
     {
-        const theirs = mint('SOMEONEELSE');
+        const theirs = somebodyElse('SOMEONEELSE');
         const { archive: signedForThem } = await resign(fixture.wgt(), theirs);
 
         const { archive: signedForUs, device } = await resign(signedForThem, pair);

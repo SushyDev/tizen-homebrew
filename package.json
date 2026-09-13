@@ -1,6 +1,6 @@
 {
   "name": "tizen-homebrew",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "description": "Install apps on a Samsung Tizen TV from your phone.",
   "license": "GPL-3.0-only",
@@ -12,6 +12,7 @@
     "node": ">=20"
   },
   "workspaces": [
+    "sdk",
     "service",
     "ui"
   ],
@@ -27,6 +28,7 @@
     "duid": "node tools/duid.js",
     "mint": "node tools/mint.js",
     "certs": "node tools/certs.js",
+    "authority": "node tools/authority.js",
     "push": "node tools/push.js",
     "repl": "node tools/repl.js",
     "dev": "npm run dev --workspace ui",
@@ -40,7 +42,6 @@
     "acorn": "^8.14.0",
     "eslint": "^10.9.1",
     "jszip": "^3.10.1",
-    "tizen": "https://github.com/reisxd/tizen.js/tarball/main",
     "ws": "^8.21.3"
   }
 }

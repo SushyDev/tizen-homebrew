@@ -4,6 +4,9 @@ const { existsSync, readFileSync } = require('fs');
 const { join, dirname } = require('path');
 const { homedir } = require('os');
 
+const pkcs12 = require('../sdk/pkcs12.js');
+const x509 = require('../sdk/x509.js');
+
 const DEFAULT_DIR = join(homedir(), '.tizen-certs');
 
 // `~/.tizen-certs` by default, with the password beside them. Environment variables still win,
@@ -27,65 +30,31 @@ const locate = () => {
     };
 };
 
-const devicesIn = (path, password) => {
-    if (!password || !existsSync(path)) return [];
+const open = (path, password) => {
+    if (!password || !existsSync(path)) return null;
 
     try {
-        const forge = require('node-forge');
-
-        const p12 = forge.pkcs12.pkcs12FromAsn1(
-            forge.asn1.fromDer(readFileSync(path).toString('binary')),
-            false,
-            password
-        );
-
-        return p12.safeContents
-            .reduce((bags, contents) => bags.concat(contents.safeBags), [])
-            .filter((bag) => bag.type === forge.pki.oids.certBag && bag.cert)
-            .reduce((found, bag) => {
-                const extension = bag.cert.getExtension('subjectAltName');
-
-                return found.concat(((extension && extension.altNames) || [])
-                    .map((name) => /deviceid=(.+)$/.exec(name.value || ''))
-                    .filter(Boolean)
-                    .map((match) => match[1]));
-            }, [])
-            .filter((device, index, all) => all.indexOf(device) === index);
+        return pkcs12.read(readFileSync(path), password);
     } catch (e) {
-        return [];
+        return null;
     }
 };
 
-// The conversion happens here so it does not happen on the television: it was the only thing the
-// service used node-forge for, and forge was a third of the bundle. The two `toPem` calls and their
-// order are lifted verbatim from `tizen/src/packageSigner.js` — the signature is built from them.
-const asPem = (der, password) => {
-    const forge = require('node-forge');
+const devicesIn = (path, password) => {
+    const pair = open(path, password);
 
-    const p12 = forge.pkcs12.pkcs12FromAsn1(
-        forge.asn1.fromDer(Buffer.from(der).toString('binary')),
-        false,
-        password
-    );
-
-    const certificates = [];
-    let key = null;
-
-    for (const contents of p12.safeContents) {
-        for (const bag of contents.safeBags) {
-            if (bag.type === forge.pki.oids.certBag && bag.cert) {
-                certificates.push(forge.pki.certificateToPem(bag.cert));
-            } else if (bag.type === forge.pki.oids.pkcs8ShroudedKeyBag && bag.key) {
-                key = forge.pki.privateKeyToPem(bag.key);
-            }
-        }
-    }
-
-    if (!certificates.length) throw new Error('That certificate file holds no certificate.');
-    if (!key) throw new Error('That certificate file holds no private key — wrong password?');
-
-    return { certificates, key };
+    return pair ? x509.devicesIn(pair.certificates) : [];
 };
+
+// Days left on the certificate that signs, which is the one that expires first and the one whose
+// expiry is silent: a package signed with a lapsed pair uploads and is then refused at install.
+const expiryOf = (path, password) => {
+    const pair = open(path, password);
+
+    return pair ? x509.expiresIn(pair.certificates[0]) : null;
+};
+
+const asPem = (bytes, password) => pkcs12.read(bytes, password);
 
 const missing = (certificates) => [
     !existsSync(certificates.author) ? `no author certificate at ${certificates.author}` : null,
@@ -98,4 +67,4 @@ const howToMint = () => 'Mint a pair bound to your television:\n\n' +
     '    npm run mint -- <tv-ip> <pin>       the same, once it is pinned to loopback\n' +
     '    npm run mint -- --duid <TV-DUID>    when you already know';
 
-module.exports = { locate, missing, devicesIn, asPem, howToMint, DEFAULT_DIR };
+module.exports = { locate, missing, devicesIn, expiryOf, asPem, howToMint, DEFAULT_DIR };
