@@ -12,7 +12,14 @@
       "name": "YouTube",
       "description": "YouTube for Tizen",
       "packageId": "tUb3Xq7Lm9",
-      "source": { "type": "github", "ref": "SushyDev/tizen-youtube" }
+      "source": { "type": "github", "ref": "SushyDev/tizen-youtube", "asset": "tizen-5.5" }
+    },
+    {
+      "id": "youtube-tizen-5.0",
+      "name": "YouTube - Tizen 5.0 ONLY",
+      "description": "YouTube for Tizen, built for Tizen 5.0 televisions",
+      "packageId": "tUb3Xq7L50",
+      "source": { "type": "github", "ref": "SushyDev/tizen-youtube", "asset": "tizen-5.0" }
     }
   ]
 }

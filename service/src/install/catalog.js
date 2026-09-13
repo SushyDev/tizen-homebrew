@@ -21,6 +21,8 @@ const usable = (entry) => {
 
     const source = { type: entry.source.type, ref: entry.source.ref };
 
+    if (source.type === 'github' && typeof entry.source.asset === 'string') source.asset = entry.source.asset;
+
     return {
         id: entry.id,
         name: entry.name,

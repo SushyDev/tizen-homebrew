@@ -41,15 +41,19 @@ const latestRelease = async (repo, log) => {
     }
 };
 
-const fromGitHub = async (repo, log) => {
+const pickAsset = (assets, wanted) => (assets || []).find((candidate) =>
+    PACKAGE_SUFFIX.test(candidate.name) && (!wanted || candidate.name.includes(wanted)));
+
+const fromGitHub = async (repo, log, wanted = null) => {
     const say = reporter(log);
 
     const release = await latestRelease(repo, log);
 
-    const asset = (release.assets || []).find((candidate) => PACKAGE_SUFFIX.test(candidate.name));
+    const asset = pickAsset(release.assets, wanted);
 
     if (!asset) {
-        throw rejected('notFound', `${release.tag_name || 'The latest release'} has no .wgt or .tpk asset.`);
+        throw rejected('notFound', `${release.tag_name || 'The latest release'} has no .wgt or .tpk asset` +
+            `${wanted ? ` matching "${wanted}"` : ''}.`);
     }
 
     say.info(`release ${release.tag_name || '(untagged)'} carries ${asset.name}` +
@@ -80,7 +84,7 @@ const fromFile = (path, log) => {
     return { archive: readFileSync(path), name: path.split('/').pop() };
 };
 
-const resolve = async ({ source, reference, catalog = [], upload = null, log = null }) => {
+const resolve = async ({ source, reference, asset = null, catalog = [], upload = null, log = null }) => {
     switch (source) {
         case 'upload':
             if (!upload || !upload.length) throw rejected('badPackage', 'No package body received.');
@@ -90,11 +94,12 @@ const resolve = async ({ source, reference, catalog = [], upload = null, log = n
         case 'catalog': {
             const entry = catalog.find((candidate) => candidate.id === reference);
             if (!entry) throw rejected('notFound', `No catalog app with id "${reference}".`);
-            reporter(log).info(`catalog entry "${reference}" is ${entry.source.type} ${entry.source.ref}`);
-            return resolve({ source: entry.source.type, reference: entry.source.ref, catalog, log });
+            reporter(log).info(`catalog entry "${reference}" is ${entry.source.type} ${entry.source.ref}` +
+                `${entry.source.asset ? ` (asset matching "${entry.source.asset}")` : ''}`);
+            return resolve({ source: entry.source.type, reference: entry.source.ref, asset: entry.source.asset, catalog, log });
         }
 
-        case 'github': return fromGitHub(reference, log);
+        case 'github': return fromGitHub(reference, log, asset);
         case 'url': return fromUrl(reference, log);
         case 'file': return fromFile(reference, log);
 
@@ -102,4 +107,4 @@ const resolve = async ({ source, reference, catalog = [], upload = null, log = n
     }
 };
 
-module.exports = { resolve, latestRelease, MAX_PACKAGE };
+module.exports = { resolve, latestRelease, pickAsset, MAX_PACKAGE };

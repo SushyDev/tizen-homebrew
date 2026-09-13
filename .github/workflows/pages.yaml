@@ -47,6 +47,9 @@ jobs:
               if ('packageId' in entry && typeof entry.packageId !== 'string') {
                 throw new Error('Entry ' + index + ' has a packageId that is not a string.');
               }
+              if ('asset' in entry.source && (entry.source.type !== 'github' || typeof entry.source.asset !== 'string')) {
+                throw new Error('Entry ' + index + ' has an asset that is not a string on a github source.');
+              }
             });
             console.log(list.length + ' apps');
           "

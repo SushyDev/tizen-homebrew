@@ -6,6 +6,7 @@ const { join } = require('path');
 
 const preview = require('../src/install/preview.js');
 const { usable, logoFor } = require('../src/install/catalog.js');
+const { pickAsset } = require('../src/install/sources.js');
 const fixture = require('./fixture.js');
 
 const results = [];
@@ -116,6 +117,30 @@ const widgetVersion = /<widget\b[^>]*\bversion="([^"]*)"/
     check('and a url app with no icon named simply has none',
         logoFor({ type: 'url', ref: 'https://example.com/Kodi.wgt' }) === null,
         String(logoFor({ type: 'url', ref: 'https://example.com/Kodi.wgt' })));
+
+    const narrowed = usable({
+        id: 'tube', name: 'YouTube', source: { type: 'github', ref: 'SushyDev/tube', asset: 'tizen-5.0' }
+    });
+
+    check('a github entry keeps the asset it asks for', narrowed.source.asset === 'tizen-5.0',
+        JSON.stringify(narrowed.source));
+}
+
+{
+    const assets = [
+        { name: 'checksums.txt' },
+        { name: 'tube-1.1.0-tizen-5.0.wgt' },
+        { name: 'tube-1.1.0-tizen-5.5.wgt' }
+    ];
+
+    check('with no asset named the first package is taken',
+        pickAsset(assets, null).name === 'tube-1.1.0-tizen-5.0.wgt', JSON.stringify(pickAsset(assets, null)));
+
+    check('a named asset picks the package whose name contains it',
+        pickAsset(assets, 'tizen-5.5').name === 'tube-1.1.0-tizen-5.5.wgt', JSON.stringify(pickAsset(assets, 'tizen-5.5')));
+
+    check('and a name nothing matches finds nothing',
+        pickAsset(assets, 'tizen-6.0') === undefined, JSON.stringify(pickAsset(assets, 'tizen-6.0')));
 }
 
 const failed = results.filter((ok) => !ok).length;

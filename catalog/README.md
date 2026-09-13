@@ -27,9 +27,14 @@ Each entry:
 or `url`, a direct https link. Entries that do not match that shape are dropped
 rather than trusted, so a malformed one costs its own row and nothing else.
 
-One asset per release, for the `github` kind: the resolver takes the first
-package it finds, so a release carrying two of them installs whichever GitHub
-happens to list first.
+A release carrying several packages needs one entry per package, each with
+`source.asset` set to text only that asset's name contains:
+
+```json
+{ "type": "github", "ref": "SushyDev/tizen-youtube", "asset": "tizen-5.0" }
+```
+
+Without `asset` the resolver takes the first package GitHub lists.
 
 ## Updates
 
