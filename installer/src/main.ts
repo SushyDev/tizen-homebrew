@@ -20,7 +20,17 @@ if (process.argv.indexOf("--list") !== -1) {
 
 const at = process.argv.indexOf("--wgt");
 
-const renderer = await createCliRenderer({ exitOnCtrlC: true, clearOnShutdown: true });
+// Kitty keyboard negotiation has wedged all input, Ctrl-C included, on terminals that answer it oddly.
+const renderer = await createCliRenderer({ exitOnCtrlC: true, clearOnShutdown: true, useKittyKeyboard: null });
+
+// A signal restores the terminal and exits even if the read loop itself is the thing that's wedged.
+const hardExit = () => {
+    renderer.destroy();
+    process.exit(130);
+};
+
+process.once("SIGINT", hardExit);
+process.once("SIGTERM", hardExit);
 
 const app = createApp(renderer, {
     wgt: at === -1 ? null : process.argv[at + 1] || null,

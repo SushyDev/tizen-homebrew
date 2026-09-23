@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { createSocket } from "node:dgram";
 import { dirname, join } from "node:path";
+import { spawn } from "node:child_process";
 
 // Imported rather than required: the bundler has to see these to put them in the binary, and a
 // createRequire call is opaque to it — the compiled program then looks for them on a disk that has
@@ -106,6 +107,17 @@ export const identify = async (ip: string): Promise<string> => {
 };
 
 export const signInUrl = (): string => minting.SIGN_IN;
+
+// Clicking a link is inconsistent across terminal emulators, so screens can open one themselves.
+export const openUrl = (url: string): void => {
+    const [command, args]: [string, string[]] = process.platform === "darwin" ? ["open", [url]]
+        : process.platform === "win32" ? ["cmd", ["/c", "start", "", url]]
+        : ["xdg-open", [url]];
+
+    try {
+        spawn(command, args, { stdio: "ignore", detached: true }).unref();
+    } catch (e) { /* the printed URL is the only fallback */ }
+};
 
 // A pair already naming this television signs for it, and Samsung has nothing to add. Worth asking
 // before sending anyone to a browser.

@@ -237,18 +237,33 @@ const identify = async (tv: work.Television): Promise<string> => {
 };
 
 const mint = async (duid: string) => {
-    show([
+    const url = work.signInUrl();
+
+    const render = (opened: boolean) => show([
         heading("  Sign in to Samsung"),
         "",
         "  A certificate has to be issued to your own Samsung account. Open this:",
         "",
-        t`    ${fg(ACCENT)(work.signInUrl())}`,
+        t`    ${fg(ACCENT)(url)}`,
         "",
         quiet(`  This television is ${duid}.`),
+        quiet(opened ? "  Opened in your browser  ·  o to open it again  ·  q to quit" : "  o to open it  ·  or copy it in yourself  ·  q to quit"),
         quiet("  Waiting for the browser to come back...")
     ]);
 
-    return work.mint(duid, publicLevel ? "Public" : "Partner");
+    render(false);
+
+    onKey = (name) => {
+        if (name !== "o") return;
+        work.openUrl(url);
+        render(true);
+    };
+
+    try {
+        return await work.mint(duid, publicLevel ? "Public" : "Partner");
+    } finally {
+        onKey = null;
+    }
 };
 
 const fetchWidget = async () => {
