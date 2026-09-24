@@ -4,7 +4,7 @@
 // runs the same two steps between a discovery menu and an install.
 //
 // `tizenjs create-samsung-cert` cannot do this today — it reads Samsung's authorization code as an
-// access token — so this serves the `check.do` redirect on localhost and calls the creator directly.
+// access token — so this serves the sign-in redirect on localhost and calls the creator directly.
 
 const { createServer } = require('http');
 const { writeFileSync, copyFileSync, mkdirSync } = require('fs');
@@ -14,12 +14,27 @@ const { join, dirname, resolve } = require('path');
 const CALLBACK_PORT = 4794;
 const CALLBACK = `http://localhost:${CALLBACK_PORT}/signin/callback`;
 
-const SIGN_IN = 'https://account.samsung.com/mobile/account/check.do' +
-    `?serviceID=v285zxnl3h&actionID=StartOAuth2&accessToken=Y&redirect_uri=${CALLBACK}`;
+// The value Apps2Samsung sends, which Samsung is known to hand back untouched.
+const STATE = 'accountcheckdogeneratedstatetext';
+
+// signInGate directly, because `check.do` can drop the request after login and leave the browser on the account page.
+const SIGN_IN = 'https://account.samsung.com/accounts/be1dce529476c1a6d407c4c7578c31bd/signInGate' +
+    `?locale=&clientId=v285zxnl3h&redirect_uri=${encodeURIComponent(CALLBACK)}&state=${STATE}&tokenType=TOKEN`;
 
 const friendly = (message) => Object.assign(new Error(message), { isFriendly: true });
 
-// The answer arrives as a form POST whose `code` field is a JSON document, whatever the field is called.
+// The answer's `code` is a JSON document, POSTed as a form by most accounts and put in the query by some.
+const fieldIn = (name, body, url) => {
+    // Split the raw body before decoding, so a `+` or `=` inside the token survives.
+    for (const pair of body.split('&')) {
+        const eq = pair.indexOf('=');
+
+        if (eq !== -1 && pair.slice(0, eq) === name) return decodeURIComponent(pair.slice(eq + 1));
+    }
+
+    return new URL(url, CALLBACK).searchParams.get(name);
+};
+
 const signIn = () => new Promise((resolve_, reject) => {
     const server = createServer((request, response) => {
         const chunks = [];
@@ -27,10 +42,18 @@ const signIn = () => new Promise((resolve_, reject) => {
         request.on('data', (chunk) => chunks.push(chunk));
 
         request.on('end', () => {
+            if (new URL(request.url, CALLBACK).pathname !== '/signin/callback') {
+                response.writeHead(404);
+                return response.end();
+            }
+
+            const body = Buffer.concat(chunks).toString('utf8');
+
             const answer = (() => {
                 try {
-                    const form = new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
-                    return JSON.parse(form.get('code'));
+                    if (fieldIn('state', body, request.url) !== STATE) return null;
+
+                    return JSON.parse(fieldIn('code', body, request.url));
                 } catch (e) {
                     return null;
                 }
@@ -43,12 +66,16 @@ const signIn = () => new Promise((resolve_, reject) => {
                 ? '<h2>Signed in.</h2><p>Close this and go back to the terminal.</p>'
                 : '<h2>That did not carry a token.</h2><p>Check the terminal.</p>');
 
-            if (request.method === 'GET') return;
-
             server.close();
 
             if (!done) {
-                return reject(friendly('Samsung sent the browser back without an access token.'));
+                // Only the field names, so the error can be pasted without leaking anything.
+                const fields = [...new URLSearchParams(body).keys(),
+                    ...new URL(request.url, CALLBACK).searchParams.keys()];
+
+                return reject(friendly(
+                    `Samsung sent the browser back without an access token (${request.method}, fields: ${fields.join(', ') || 'none'}).`
+                ));
             }
 
             resolve_({ accessToken: answer.access_token, userId: answer.userId, email: answer.inputEmailID });
