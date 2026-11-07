@@ -50,7 +50,8 @@ const main = async () => {
 
     const { code } = injectTokens(entry.code, {
         __HOMEBREW_BUILD__: stamp,
-        __HOMEBREW_ORIGIN__: config.catalogUrl.replace(/\/catalog\.json$/, '')
+        __HOMEBREW_ORIGIN__: config.catalogUrl.replace(/\/catalog\.json$/, ''),
+        __HOMEBREW_SUPPORT__: config.supportUrl || 'off'
     });
 
     rmSync(outDir, { recursive: true, force: true });

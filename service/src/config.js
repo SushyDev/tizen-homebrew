@@ -36,8 +36,8 @@ function read() {
 }
 
 function write(config) {
-    if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR);
-        const tmp = `${CONFIG_PATH}.tmp`;
+    if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
+    const tmp = `${CONFIG_PATH}.tmp`;
     writeFileSync(tmp, JSON.stringify(config, null, 4));
     renameSync(tmp, CONFIG_PATH);
     return config;
@@ -51,12 +51,24 @@ function update(patch) {
 // every start would be readable only off the screen that starting on boot exists to avoid, and every
 // paired phone would be dropped by each reboot. It lives beside the signing keys, which are the more
 // valuable half of this file by a wide margin.
+let unsaved = null;
+
 function pairingPin() {
     const kept = read().pin;
 
     if (typeof kept === 'string' && kept.length === pin.DIGITS) return kept;
+    if (unsaved) return unsaved;
 
-    return update({ pin: pin.generate() }).pin;
+    const minted = pin.generate();
+
+    // A share directory the service cannot write must not stop it listening.
+    try {
+        return update({ pin: minted }).pin;
+    } catch (error) {
+        console.error(`could not save the pairing code, it will change on the next start: ${error.message}`);
+        unsaved = minted;
+        return minted;
+    }
 }
 
 function hasCertificates(duid) {

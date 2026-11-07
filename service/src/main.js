@@ -10,6 +10,7 @@ const { size, took, host } = require('./obs/units.js');
 const runtime = require('./obs/runtime.js');
 const platform = require('./obs/platform.js');
 const memory = require('./obs/memory.js');
+const lastRun = require('./obs/lastrun.js');
 
 const recorded = startRecording();
 const log = recorded.log;
@@ -27,6 +28,7 @@ const protocol = require('./protocol.js');
 const { createInstaller } = require('./install/pipeline.js');
 const { createCatalog } = require('./install/catalog.js');
 const { createUpdates } = require('./install/updates.js');
+const diag = require('./http/diag.js');
 
 const { ErrorCode } = protocol;
 
@@ -35,10 +37,11 @@ const PORT = Number(process.env.HOMEBREW_PORT) || 8091;
 
 const BUILD = '__HOMEBREW_BUILD__';
 const ORIGIN = '__HOMEBREW_ORIGIN__';
+const SUPPORT = '__HOMEBREW_SUPPORT__';
 
 const DEVELOPER = globalThis.__HOMEBREW_DEV__ === true;
 
-const start = () => {
+const boot = () => {
     const startedAt = new Date().toISOString();
     const secret = DEVELOPER ? pin.DEVELOPER_PIN : config.pairingPin();
 
@@ -48,6 +51,9 @@ const start = () => {
 
     svc.info(`tizen homebrew ${BUILD} starting`);
     svc.info(`${runtime.summary()}, pid ${process.pid}`);
+
+    const previous = lastRun.recall();
+    if (previous) svc.warn(`the previous run hit ${previous.what} at ${previous.at}: ${previous.message}`);
 
     platform.describe().then(
         (facts) => platform.summary(facts).forEach((line) => dev.info(line)),
@@ -402,7 +408,7 @@ const start = () => {
     // Exiting is all the service can do about its own lifetime: the UI page holds no privilege to stop
     // a sibling application. What brings it back is config.xml — auto-restart if the platform honours
     // it, and the page's own launchAppControl if it does not.
-    const exitAfterResponse = (payload, asked, why) => (request, response) => {
+    const exitAfterResponse = (payload, asked, why, code) => (request, response) => {
         const verdict = authorise(request.headers['x-homebrew-pin']);
 
         if (!verdict.ok) {
@@ -419,15 +425,36 @@ const start = () => {
         // The response has to clear the socket first, because the caller waits on it.
         setTimeout(() => {
             svc.info(`exiting after ${took(recorded.uptime())} ${why}`);
-            process.exit(0);
+            process.exit(code);
         }, 300);
     };
 
+    // Non-zero, because auto-restart brings back a service that failed and leaves one that exited cleanly.
     router.on.post('/restart', exitAfterResponse(
-        { restarting: true }, 'restart', 'so the platform reloads it on new code'));
+        { restarting: true }, 'restart', 'so the platform reloads it on new code', 1));
 
     router.on.post('/shutdown', exitAfterResponse(
-        { stopping: true }, 'stop', 'because someone asked it to'));
+        { stopping: true }, 'stop', 'because someone asked it to', 0));
+
+    const diagnostics = () => diag.bundle({
+        build: BUILD,
+        startedAt,
+        runtime: runtime.summary(),
+        device: store.select('device'),
+        hasCertificates: config.hasCertificates(),
+        addresses: lanAddresses().map((entry) => `${entry.address} (${entry.iface})`),
+        lines: recorded.since(0),
+        secret
+    });
+
+    router.on.get('/diag', (_request, response) =>
+        bytes(response, Buffer.from(diag.page(diagnostics(), supportUrl())), 'text/html; charset=utf-8'));
+
+    router.on.get('/diag.json', (_request, response) => json(response, diagnostics()));
+
+    router.on.get('/services', (_request, response) => packages.services().then(
+        (list) => json(response, { ok: true, services: list }),
+        (error) => failure(response, 500, error.code || ErrorCode.INTERNAL, error.message)));
 
     const uiRoot = [
         join(__dirname, '..', '..', 'ui', 'dist'),
@@ -496,14 +523,73 @@ const start = () => {
 
     sockets = require('./socket.js').attach({
         server, store, secret, authorise, installer, catalog, updates, relay, refreshDevice,
-        fromLoopback, greeting: () => ({ ...pairing(), build: BUILD }), recorded, config, protocol, log
+        fromLoopback, greeting: () => ({ ...pairing(), build: BUILD, support: supportUrl() }), recorded, config, protocol, log
     });
 
     return { server, port: PORT, pin: secret, build: BUILD };
 };
 
+const supportUrl = () => (/^https?:/.test(SUPPORT) ? SUPPORT : '');
+
+// A start that throws still listens, so the television can say why instead of waiting forever.
+const emergency = (error) => {
+    lastRun.record('a fatal error while starting', error, BUILD);
+    log.on(Facility.SVC).err(`could not start: ${(error && error.stack) || error}`);
+
+    const server = createServer((_request, response) => {
+        response.writeHead(503, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ ok: false, fatal: String(error && error.message) }));
+    });
+
+    const WebSocket = require('ws');
+
+    new WebSocket.Server({ server }).on('connection', (socket) => {
+        socket.send(JSON.stringify({ type: protocol.Outbound.HELLO, payload: { ok: false, fatal: String(error && error.message), build: BUILD } }));
+        socket.send(JSON.stringify({ type: protocol.Outbound.LOG, payload: { lines: recorded.since(0), uptime: recorded.uptime() } }));
+    });
+
+    server.on('error', (bindError) => log.on(Facility.NET).err(`cannot listen on ${PORT}: ${bindError.message}`));
+    server.listen(PORT, '0.0.0.0');
+
+    return { server, port: PORT, build: BUILD, fatal: error };
+};
+
+let running = null;
+
+// Tizen re-enters onStart in the same process after standby, and a second start would fight the first for the port.
+const start = () => {
+    if (running) {
+        log.on(Facility.SVC).info('started again in the same process — the running service carries on');
+        return running;
+    }
+
+    lastRun.watch(BUILD);
+
+    try {
+        running = boot();
+    } catch (error) {
+        running = emergency(error);
+    }
+
+    return running;
+};
+
+const stop = () => {
+    if (!running) return;
+
+    log.on(Facility.SVC).info('the platform is stopping the service');
+    sdb.release();
+
+    try {
+        running.server.close();
+    } catch (e) {}
+
+    running = null;
+};
+
 // Tizen's service runtime calls onStart; a service exporting anything else loads and never listens.
 module.exports.onStart = start;
+module.exports.onExit = stop;
 module.exports.start = start;
 
 // Tizen calls onRequest for launches into a running service; without it the runner throws on each one.

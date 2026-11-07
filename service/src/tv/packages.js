@@ -143,4 +143,36 @@ const launch = (appId) => {
     });
 };
 
-module.exports = { list, launch, onTv, APPS_ROOT, NAMING_DEADLINE };
+const tagAttribute = (tag, name) => {
+    const found = new RegExp(`\\b${name}="([^"]*)"`).exec(tag);
+    return found ? found[1] : null;
+};
+
+// Every installed widget that carries a background service, so the TV page can start the ones the platform did not.
+const servicesOnDisk = async (options) => {
+    const root = (options && options.appsRoot) || APPS_ROOT;
+    const ids = (await readdir(root).catch(() => [])).filter((name) => name[0] !== '.');
+    const found = [];
+
+    for (const id of ids) {
+        const xml = await readFile(join(root, id, 'res/wgt/config.xml'), 'utf8').catch(() => null);
+        if (!xml) continue;
+
+        const application = /<tizen:application\b[^>]*>/.exec(xml);
+        const name = elementText(xml, 'name');
+
+        (xml.match(/<tizen:service\b[^>]*>/g) || []).forEach((tag) => found.push({
+            packageId: id,
+            serviceId: tagAttribute(tag, 'id'),
+            appId: application ? tagAttribute(application[0], 'id') : null,
+            name: name || id,
+            onBoot: tagAttribute(tag, 'on-boot') === 'true'
+        }));
+    }
+
+    return found.filter((entry) => entry.serviceId);
+};
+
+const services = (options) => (onTv() || (options && options.appsRoot) ? servicesOnDisk(options) : Promise.reject(offTv()));
+
+module.exports = { list, launch, services, onTv, APPS_ROOT, NAMING_DEADLINE };
