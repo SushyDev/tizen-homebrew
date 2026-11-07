@@ -117,25 +117,6 @@ const main = async () => {
             refused && refused.code === 'notOnTv', String(refused));
     }
 
-    {
-        const servicesRoot = mkdtempSync(join(tmpdir(), 'homebrew-services-'));
-
-        mkdirSync(join(servicesRoot, 'tUb3Xq7Lm9/res/wgt'), { recursive: true });
-        writeFileSync(join(servicesRoot, 'tUb3Xq7Lm9/res/wgt/config.xml'),
-            '<widget version="1.5.1"><tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9"/>' +
-            '<name>YouTube</name><tizen:service id="tUb3Xq7Lm9.TubeService" auto-restart="true" on-boot="true">' +
-            '</tizen:service></widget>');
-        mkdirSync(join(servicesRoot, 'plain/res/wgt'), { recursive: true });
-        writeFileSync(join(servicesRoot, 'plain/res/wgt/config.xml'), '<widget><name>Plain</name></widget>');
-
-        const found = await load().services({ appsRoot: servicesRoot });
-
-        check('a widget with a service is listed with its ids',
-            found.length === 1 && found[0].serviceId === 'tUb3Xq7Lm9.TubeService' &&
-            found[0].appId === 'tUb3Xq7Lm9.Tube' && found[0].onBoot === true && found[0].name === 'YouTube',
-            JSON.stringify(found));
-    }
-
     const failed = results.filter((ok) => !ok).length;
     console.log(`\n${results.length - failed}/${results.length} checks passed.`);
     process.exit(failed ? 1 : 0);

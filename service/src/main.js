@@ -452,10 +452,6 @@ const boot = () => {
 
     router.on.get('/diag.json', (_request, response) => json(response, diagnostics()));
 
-    router.on.get('/services', (_request, response) => packages.services().then(
-        (list) => json(response, { ok: true, services: list }),
-        (error) => failure(response, 500, error.code || ErrorCode.INTERNAL, error.message)));
-
     const uiRoot = [
         join(__dirname, '..', '..', 'ui', 'dist'),
         join(__dirname, '..', 'ui', 'dist'),
