@@ -4,9 +4,10 @@
 //
 // Nothing here throws: a preview is a courtesy, and pipeline.js is where a bad package is refused.
 
-const { closeSync, openSync, readSync } = require('fs');
+const { closeSync, openSync, readSync, fstatSync } = require('fs');
 
 const manifest = require('./manifest.js');
+const zip = require('./zip.js');
 
 // A .wgt is front-loaded, so two megabytes reaches the manifest and the icon — the alternative is
 // pulling every 40MB app on a stick through the television's memory to draw a list.
@@ -75,6 +76,7 @@ const describe = (archive, identity = null) => {
     };
 };
 
+// Seeked rather than read whole, so a manifest far from the front of a large package is still found.
 const describeFile = (path) => {
     const handle = (() => {
         try {
@@ -87,6 +89,10 @@ const describeFile = (path) => {
     if (handle === null) return null;
 
     try {
+        const source = zip.fromFile(handle, fstatSync(handle).size, readSync);
+
+        if (zip.centralEntries(source)) return describe(source);
+
         const head = Buffer.alloc(HEAD);
         const read = readSync(handle, head, 0, HEAD, 0);
 
