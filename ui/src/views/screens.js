@@ -8,6 +8,7 @@ const masthead = (state) => html`
     ${wordmark()}
     <span class="inline">
       <span class="micro mono">${state.connection}</span>
+      <span class="micro mono">v${__HOMEBREW_VERSION__}</span>
       <button class="btn btn-quiet" data-focus="theme" data-on-click="theme"
               aria-pressed="${state.themeOn}"
               title="The Homebrew Channel theme">${state.themeOn ? 'theme · on' : 'theme · off'}</button>
