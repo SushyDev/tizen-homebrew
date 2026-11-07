@@ -64,6 +64,19 @@ const SIGNATURES = [
         }
     },
     {
+        // install failed[118, 0], reason: Success — the set stops after the signature has been
+        // accepted and names no reason at all. Nothing about the package is being reported here:
+        // a minimal correctly-signed app fails at the same step, so this is the installer, not the
+        // certificate, the manifest or the free space.
+        code: ErrorCode.INSTALL_FAILED,
+        matches: /install failed\[118,\s*0\],\s*reason:\s*Success/i,
+        remedy: () => 'The television accepted the signature and then stopped with no reason of ' +
+            'its own, which is a set-side install failure rather than a problem with the package. ' +
+            'Nothing here can fix it: Reset Smart Hub on the TV (Settings > Support > Device Care) ' +
+            'rebuilds the app database that the installer writes to, and a full reset is the ' +
+            'fallback.'
+    },
+    {
         // Anything else the installer refused. No remedy: the line itself is the only evidence.
         code: ErrorCode.INSTALL_FAILED,
         matches: /install failed/i,
