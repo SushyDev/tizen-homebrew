@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import { defineConfig } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 import presetEnv from 'postcss-preset-env';
@@ -14,12 +15,19 @@ const API = ['/pin', '/state', '/version', '/health', '/logs', '/packages', '/in
 
 const PAGE = process.env.HOMEBREW_PAGE || 'index';
 
+const SETTINGS = JSON.parse(readFileSync(new URL('../tizen.config.json', import.meta.url), 'utf8'));
+
+const VERSION = process.env.HOMEBREW_VERSION || SETTINGS.version;
+const SUPPORT = (process.env.HOMEBREW_SUPPORT_URL || SETTINGS.supportUrl || '').replace(/\/+$/, '');
+
 // Tizen 5.5 ships Chromium 63 and Tizen 6.5 ships Chromium 76, and both fail silently: an unknown
 // at-rule takes the whole stylesheet with it, with no console error to find. So the source is
 // modern CSS, PostCSS lowers it, and build.js refuses output containing anything they would drop.
 const ENGINE = 'chrome >= 63';
 
 export default defineConfig({
+    define: { __HOMEBREW_VERSION__: JSON.stringify(VERSION), __HOMEBREW_SUPPORT__: JSON.stringify(SUPPORT) },
+
     css: {
         postcss: {
             plugins: [presetEnv({

@@ -7,6 +7,7 @@ import { connect as openSocket } from './core/socket.js';
 import { sea } from './scene/sea.js';
 import { theme } from './scene/theme.js';
 import { masthead, connect, status, log, overlay, deck, windowOf } from './views/television.js';
+import { platformVersion, modelName, describe, startService } from './core/launch.js';
 
 const PORT = 8091;
 
@@ -18,6 +19,11 @@ const BASE = application ? `http://127.0.0.1:${PORT}` : '';
 
 const RED = 403;
 
+const VERSION = __HOMEBREW_VERSION__;
+const SUPPORT = __HOMEBREW_SUPPORT__;
+
+const TIZEN = application ? platformVersion() : null;
+
 const store = createStore({
     url: null,
     pin: null,
@@ -28,7 +34,16 @@ const store = createStore({
     from: 0,
     rows: null,
     themeOn: false,
-    restarting: false
+    restarting: false,
+    connected: false,
+    fatal: null,
+    launchError: null,
+    tizen: TIZEN,
+    model: application ? modelName() : null,
+    started: Date.now(),
+    now: Date.now(),
+    support: SUPPORT,
+    report: null
 });
 
 const started = Date.now();
@@ -103,14 +118,20 @@ const post = (path) => new Promise((resolve, reject) => {
 
 const SERVICE_ID = application ? `${application.appInfo.packageId}.TizenHomebrewService` : null;
 
-const launchService = () => new Promise((resolve, reject) => {
-    tizen.application.launchAppControl(
-        new tizen.ApplicationControl('http://tizen.org/appcontrol/operation/service'),
-        SERVICE_ID,
-        resolve,
-        reject
-    );
-});
+const failures = {};
+
+// Said once, then every tenth time with a count, so a photo of the screen still shows what failed.
+const failedTo = (what, error) => {
+    const why = describe(error);
+    const key = `${what}: ${why}`;
+
+    failures[key] = (failures[key] || 0) + 1;
+
+    const count = failures[key];
+    if (count === 1 || count % 10 === 0) say(`${key}${count > 1 ? ` (×${count})` : ''}`, 'err');
+
+    return why;
+};
 
 let leaving = false;
 
@@ -133,6 +154,89 @@ const leave = () => {
     application.exit();
 };
 
+const get = (path, timeout) => new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('GET', BASE + path, true);
+    request.timeout = timeout || 4000;
+    request.onload = () => {
+        try {
+            if (request.status >= 400) throw new Error(`HTTP ${request.status}`);
+            resolve(JSON.parse(request.responseText));
+        } catch (error) {
+            reject(error);
+        }
+    };
+    request.onerror = () => reject(new Error('unreachable'));
+    request.ontimeout = () => reject(new Error('timeout'));
+    request.send();
+});
+
+const redacted = (text) => {
+    const { pin } = store.get();
+    return pin ? String(text).split(pin).join('······') : String(text);
+};
+
+// Sent from the page itself, because the service it would otherwise ask may be the thing that is broken.
+const sendReport = () => {
+    const { support, report } = store.get();
+    if (!support || (report && report.state === 'sending')) return;
+
+    store.update({ report: { state: 'sending' } });
+
+    const facts = (service) => {
+        const state = store.get();
+
+        return {
+            app: 'homebrew',
+            version: VERSION,
+            report: {
+                source: 'tv',
+                tizen: state.tizen,
+                model: state.model,
+                connected: state.connected,
+                fatal: state.fatal,
+                launchError: state.launchError,
+                secondsOpen: Math.round((Date.now() - state.started) / 1000),
+                log: state.lines.slice(-300).map((line) => ({ t: line.t, facility: line.facility, level: line.level, text: redacted(line.text) })),
+                service
+            }
+        };
+    };
+
+    const upload = (body) => new Promise((resolve, reject) => {
+        const request = new XMLHttpRequest();
+        request.open('POST', `${support}/api/reports`, true);
+        request.timeout = 15000;
+        request.setRequestHeader('content-type', 'application/json');
+        request.onload = () => {
+            try {
+                const answer = JSON.parse(request.responseText);
+                if (!answer.code) throw new Error(answer.error || `HTTP ${request.status}`);
+                resolve(answer);
+            } catch (error) {
+                reject(error);
+            }
+        };
+        request.onerror = () => reject(new Error('the support server could not be reached'));
+        request.ontimeout = () => reject(new Error('the support server did not answer'));
+        request.send(JSON.stringify(body));
+    });
+
+    get('/diag.json', 3000)
+        .then((bundle) => bundle, () => null)
+        .then((bundle) => upload(facts(bundle)))
+        .then(
+            (answer) => {
+                say(`report sent — code ${answer.code}`, 'ok');
+                store.update({ report: { state: 'done', code: answer.code, url: answer.url } });
+            },
+            (error) => {
+                say(`could not send the report: ${describe(error)}`, 'err');
+                store.update({ report: { state: 'failed', message: describe(error) } });
+            }
+        );
+};
+
 const open = (view) => store.update((state) => {
     const { rows, total } = windowOf({ ...state, view });
 
@@ -144,7 +248,7 @@ const close = () => {
 
     store.update({ view: 'main', from: 0, rows: null });
 
-    keys.focus(view === 'credits' ? 'credits' : 'logs');
+    keys.focus(view === 'main' ? 'help' : view);
 };
 
 const scroll = (steps, page) => store.update((state) => {
@@ -170,6 +274,11 @@ const actions = {
     close: () => close(),
     pop: () => water.popAll(),
     restart: () => restart(),
+    help: () => {
+        open('help');
+        keys.focus(store.get().support ? 'send' : 'close');
+    },
+    send: () => sendReport(),
     exit: () => leave()
 };
 
@@ -193,7 +302,7 @@ const keys = remote({
             return true;
         }
 
-        if (view === 'main' || !SCROLLS[keyCode]) return false;
+        if (view === 'main' || view === 'help' || !SCROLLS[keyCode]) return false;
 
         scroll(...SCROLLS[keyCode]);
         return true;
@@ -261,7 +370,7 @@ store.subscribe(() => {
     if (settling) fit(); else remeasure();
 });
 
-keys.focus('restart');
+keys.focus('help');
 
 window.addEventListener('resize', remeasure);
 
@@ -282,15 +391,21 @@ let lastUptime = 0;
 // Asking the platform to start the service is idempotent — a launch into one already running lands on
 // its onRequest and does nothing — so it is safe to repeat while nothing answers, and repeating is what
 // covers the case a socket cannot tell apart on its own: a service that is not slow but gone.
-const relaunch = () => launchService().then(
+const relaunch = () => startService(SERVICE_ID, TIZEN).then(
     () => {},
-    (error) => say(`could not launch the service: ${error.message}`, 'err')
+    (error) => store.update({ launchError: failedTo('the TV would not start the service', error) })
 );
 
 // Twice the greeting: refused first, with the pairing code attached because this page is on loopback and
 // GET /pin has always trusted that, then accepted once the code is handed back. Nothing is typed in here,
 // and the code is kept across restarts, so a reboot does not strand the phone that paired.
 const greeted = (payload) => {
+    if (payload.fatal) {
+        say(`the service crashed while starting: ${payload.fatal}`, 'err');
+        store.update({ fatal: payload.fatal, build: payload.build || null });
+        return;
+    }
+
     if (payload.ok) return link.send(Send.watch, { logsSince: sinceSeq });
 
     if (!payload.pin) {
@@ -306,7 +421,7 @@ const greeted = (payload) => {
 
     store.update({
         pin: payload.pin,
-        url: reachable ? `http://${payload.addresses[0]}:${port}` : `port ${port}`,
+        url: reachable ? `http://${payload.addresses[0]}:${port}` : 'not on a network',
         build: payload.build || null
     });
 
@@ -349,12 +464,12 @@ const RELAUNCH_EVERY = 4;
 const changed = (status, attempt) => {
     if (status === 'connected') {
         say(`the service answered on port ${PORT}`, 'ok');
-        store.update({ restarting: false });
+        store.update({ restarting: false, connected: true, launchError: null });
         return;
     }
 
     // Nothing is known about the television until the service says so again.
-    store.update({ ready: null });
+    store.update({ ready: null, connected: false });
 
     // attempt 0 is a socket that was open and dropped, which over loopback means the service exited.
     if (attempt === 0) say('the service went away', 'warn');
@@ -380,15 +495,31 @@ const restart = () => {
     // socket dropping, and `changed` above takes it from there — including clearing this flag once
     // something answers again. Only a refusal with a status behind it means nothing is restarting.
     post('/restart').catch((failure) => {
-        if (failure.message.indexOf('HTTP') !== 0) return;
-
-        say(`the service refused the restart (${failure.message})`, 'err');
         store.update({ restarting: false });
+
+        if (failure.message.indexOf('HTTP') === 0) {
+            say(`the service refused the restart (${failure.message})`, 'err');
+            return;
+        }
+
+        say('the service is not running — asking the TV to start it', 'warn');
+        relaunch();
     });
+
+    setTimeout(() => {
+        if (store.get().restarting) store.update({ restarting: false });
+    }, 20000);
 };
+
+// The status band words its advice by how long the service has been silent.
+setInterval(() => {
+    if (!store.get().connected) store.update({ now: Date.now() });
+}, 5000);
 
 // It is usually already up: config.xml starts it with the television. This is for the set that does
 // not honour that, and it lands on a running service's onRequest otherwise.
+say(`tizen homebrew ${VERSION}${TIZEN ? ` on tizen ${TIZEN}` : ''}`);
+
 if (application) {
     say('asking the platform to start the background service');
     relaunch();

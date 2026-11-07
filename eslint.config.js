@@ -115,7 +115,9 @@ module.exports = [
                 XMLHttpRequest: 'readonly',
                 HTMLElement: 'readonly',
                 FileReader: 'readonly',
-                process: 'readonly'
+                process: 'readonly',
+                __HOMEBREW_VERSION__: 'readonly',
+                __HOMEBREW_SUPPORT__: 'readonly'
             })
         },
         rules: CORRECTNESS_RULES

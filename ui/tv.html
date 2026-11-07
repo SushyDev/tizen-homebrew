@@ -22,5 +22,10 @@
     <footer id="deck"></footer>
   </main>
   <script type="module" src="/src/tv.js"></script>
+  <script nomodule>
+    document.getElementById('status').innerHTML = '<div class="state state-fault" style="margin:10vh 6vw">' +
+      '<span class="state-head">This TV is too old for Tizen Homebrew</span>' +
+      '<span class="small">Its built-in browser cannot run the app, and no setting changes that. You can uninstall it from this TV.</span></div>';
+  </script>
 </body>
 </html>
