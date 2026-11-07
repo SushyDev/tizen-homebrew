@@ -22,7 +22,9 @@ const crc32 = (buffer) => {
     return (crc ^ -1) >>> 0;
 };
 
-const zipAll = (entries) => {
+// `descriptor` writes every entry the streaming way: flag bit 3, zeros for the sizes in the local header,
+// and the real ones in a data descriptor after the data — how Alpha, Charlie and Bravo are packed.
+const zipAll = (entries, { descriptor = false } = {}) => {
     const bodies = [];
     const directory = [];
     let at = 0;
@@ -35,17 +37,26 @@ const zipAll = (entries) => {
         const local = Buffer.alloc(30);
         local.writeUInt32LE(0x04034b50, 0);   // local file header
         local.writeUInt16LE(20, 4);           // version needed
-        local.writeUInt16LE(0, 6);            // flags
+        local.writeUInt16LE(descriptor ? 0x0808 : 0, 6); // flags: bit 3 is the data descriptor
         local.writeUInt16LE(deflate ? 8 : 0, 8);
-        local.writeUInt32LE(sum, 14);
-        local.writeUInt32LE(stored.length, 18);
-        local.writeUInt32LE(contents.length, 22);
+        local.writeUInt32LE(descriptor ? 0 : sum, 14);
+        local.writeUInt32LE(descriptor ? 0 : stored.length, 18);
+        local.writeUInt32LE(descriptor ? 0 : contents.length, 22);
         local.writeUInt16LE(filename.length, 26);
+
+        const trailer = Buffer.alloc(descriptor ? 16 : 0);
+        if (descriptor) {
+            trailer.writeUInt32LE(0x08074b50, 0);
+            trailer.writeUInt32LE(sum, 4);
+            trailer.writeUInt32LE(stored.length, 8);
+            trailer.writeUInt32LE(contents.length, 12);
+        }
 
         const central = Buffer.alloc(46);
         central.writeUInt32LE(0x02014b50, 0); // central directory header
         central.writeUInt16LE(20, 4);         // version made by
         central.writeUInt16LE(20, 6);         // version needed
+        central.writeUInt16LE(descriptor ? 0x0808 : 0, 8);
         central.writeUInt16LE(deflate ? 8 : 0, 10);
         central.writeUInt32LE(sum, 16);
         central.writeUInt32LE(stored.length, 20);
@@ -53,10 +64,10 @@ const zipAll = (entries) => {
         central.writeUInt16LE(filename.length, 28);
         central.writeUInt32LE(at, 42);        // where its local header is
 
-        bodies.push(local, filename, stored);
+        bodies.push(local, filename, stored, trailer);
         directory.push(central, filename);
 
-        at += local.length + filename.length + stored.length;
+        at += local.length + filename.length + stored.length + trailer.length;
     });
 
     const central = Buffer.concat(directory);
@@ -84,6 +95,14 @@ const wgtWithIcon = () => zipAll([
     { name: 'icon.png', contents: PIXEL }
 ]);
 
+// The same package, written the streaming way, with filler ahead of config.xml so the manifest is
+// nowhere near the front — Bravo's is 6MB in.
+const streamedWgt = ({ filler = 0 } = {}) => zipAll([
+    { name: 'NOTICES.txt', contents: Buffer.alloc(filler, 0x20), deflate: true },
+    { name: 'config.xml', contents: readFileSync(join(__dirname, '..', '..', 'config.xml')), deflate: true },
+    { name: 'icon.png', contents: PIXEL }
+], { descriptor: true });
+
 const notAPackage = () => zip('readme.txt', Buffer.from('not a package', 'utf8'));
 
-module.exports = { wgt, wgtWithIcon, notAPackage, zip, zipAll, crc32, PIXEL };
+module.exports = { wgt, wgtWithIcon, streamedWgt, notAPackage, zip, zipAll, crc32, PIXEL };
