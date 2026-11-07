@@ -1,4 +1,5 @@
 {
   "version": "0.2.2",
-  "catalogUrl": "https://sushydev.github.io/tizen-homebrew/catalog.json"
+  "catalogUrl": "https://sushydev.github.io/tizen-homebrew/catalog.json",
+  "supportUrl": ""
 }

@@ -48,6 +48,7 @@ function load(options) {
     const config = {
         version: process.env.HOMEBREW_VERSION || file.version,
         catalogUrl: process.env.HOMEBREW_CATALOG_URL || file.catalogUrl || '',
+        supportUrl: (process.env.HOMEBREW_SUPPORT_URL || file.supportUrl || '').replace(/\/+$/, ''),
 
         dev: process.env.HOMEBREW_DEV === '1'
     };
@@ -57,6 +58,8 @@ function load(options) {
     }
 
     const catalogUrl = validUrl(config.catalogUrl, 'catalogUrl');
+
+    if (config.supportUrl) validUrl(config.supportUrl, 'supportUrl');
 
     config.placeholders = PLACEHOLDER_HOSTS.indexOf(catalogUrl.hostname) !== -1 ? ['catalogUrl'] : [];
 
